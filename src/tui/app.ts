@@ -30,6 +30,8 @@ interface State {
   dirty: Set<EnvFile>;
   visibleKeys: string[];
   message: string | null;
+  driftOnly: boolean;
+  confirmQuit: boolean;
 }
 
 const COLORS = {
@@ -61,7 +63,9 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     prompt: null,
     dirty: new Set(),
     visibleKeys: matrix.keys.slice(),
-    message: null
+    message: null,
+    driftOnly: false,
+    confirmQuit: false
   };
 
   // --- Layout ---
@@ -141,9 +145,11 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
   // --- State helpers ---
   const recomputeVisibleKeys = () => {
-    state.visibleKeys = matrix.keys.filter((k) =>
-      matchesFilter(k, state.filter)
-    );
+    state.visibleKeys = matrix.keys.filter((k) => {
+      if (!matchesFilter(k, state.filter)) return false;
+      if (state.driftOnly && !keyDrifts(matrix, k)) return false;
+      return true;
+    });
     if (state.rowIdx >= state.visibleKeys.length) {
       state.rowIdx = Math.max(0, state.visibleKeys.length - 1);
     }
@@ -377,11 +383,29 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
       // Browse mode.
       if (key.ctrl && key.name === 'c') return cleanup();
-      if (key.ctrl && key.name === 's') return void saveDirty();
+      if (key.ctrl && key.name === 's') {
+        state.confirmQuit = false;
+        return void saveDirty();
+      }
+
+      const tryQuit = () => {
+        if (state.dirty.size > 0 && !state.confirmQuit) {
+          state.confirmQuit = true;
+          state.message = `${state.dirty.size} unsaved file(s). Press 'q' again to quit without saving, or Ctrl-S to save first.`;
+          refresh();
+          return;
+        }
+        cleanup();
+      };
+      // Any key other than q clears a pending quit confirmation.
+      if (state.confirmQuit && key.name !== 'q') {
+        state.confirmQuit = false;
+        state.message = null;
+      }
 
       switch (key.name) {
         case 'q':
-          return cleanup();
+          return tryQuit();
         case 'up':
           state.rowIdx = Math.max(0, state.rowIdx - 1);
           return refresh();
@@ -406,6 +430,13 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           return startDelete();
         case 'n':
           return startNewFile();
+        case 'v':
+          state.driftOnly = !state.driftOnly;
+          state.message = state.driftOnly
+            ? 'Drift-only view (only keys with differences).'
+            : 'Full view.';
+          recomputeVisibleKeys();
+          return refresh();
       }
 
       if (key.sequence === '/' || key.name === 'slash') {
@@ -506,9 +537,10 @@ function refreshFooter(
     hint.content = `[Enter] keep filter   [Esc] clear${dirtyLabel}`;
     promptLabel.content = ' Filter:';
   } else {
+    const viewLabel = state.driftOnly ? ' [diff]' : '';
     hint.content =
-      `[↑↓←→] move  [e] edit  [a] add  [d] del  [n] new file  [/] filter  ` +
-      `[Ctrl-S] save  [q] quit${dirtyLabel}`;
+      `[↑↓←→] move  [e] edit  [a] add  [d] del  [n] new  ` +
+      `[v] view${viewLabel}  [/] filter  [Ctrl-S] save  [q] quit${dirtyLabel}`;
     promptLabel.content = '';
   }
   filterInput.width = state.mode === 'filter' ? 40 : 0;
@@ -530,6 +562,15 @@ function promptLabelText(p: Prompt): string {
 }
 
 // --- Helpers ---
+
+function keyDrifts(matrix: Matrix, key: string): boolean {
+  for (const file of matrix.files) {
+    if (file === matrix.base) continue;
+    const s = matrix.cell(key, file).state;
+    if (s === 'differs' || s === 'missing' || s === 'extra') return true;
+  }
+  return false;
+}
 
 function isValidEnvFileName(name: string): boolean {
   if (!name.startsWith('.env')) return false;
@@ -602,11 +643,12 @@ function removeAllChildren(node: BoxRenderable): void {
 function matrixTitle(matrix: Matrix, state: State): string {
   const visible = state.visibleKeys.length;
   const total = matrix.keys.length;
-  const filtered =
-    state.filter && visible !== total
-      ? ` · "${state.filter}" (${visible}/${total})`
-      : '';
-  return ` Matrix · ${total} keys${filtered} `;
+  const parts: string[] = [`${total} keys`];
+  if (state.driftOnly) parts.push(`drift ${visible}/${total}`);
+  else if (state.filter && visible !== total) {
+    parts.push(`"${state.filter}" ${visible}/${total}`);
+  }
+  return ` Matrix · ${parts.join(' · ')} `;
 }
 
 function renderCellText(
