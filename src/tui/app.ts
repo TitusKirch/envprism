@@ -37,6 +37,8 @@ type UndoEntry =
 
 const UNDO_LIMIT = 50;
 
+type Pane = 'matrix' | 'sidebar';
+
 interface State {
   mode: Mode;
   filter: string;
@@ -51,6 +53,9 @@ interface State {
   grouping: Grouping;
   helpOpen: boolean;
   undo: UndoEntry[];
+  pane: Pane;
+  sidebarIdx: number;
+  enabled: Set<EnvFile>;
 }
 
 const COLORS = {
@@ -74,9 +79,19 @@ const CELL_PAD_X = 1;
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const HELP_TEXT = [
-  'Navigation',
+  'Panes',
+  '  Tab               Switch focus between matrix and files sidebar',
+  '  ← (at leftmost)   Hop from matrix into the sidebar',
+  '',
+  'Navigation (matrix)',
   '  ↑ ↓ ← →           Move focused cell',
   '  Mouse wheel       Scroll the matrix (both axes)',
+  '',
+  'Files sidebar (Tab to enter)',
+  '  ↑ ↓               Move sidebar selection',
+  '  Space             Toggle file enabled (hides from matrix)',
+  '  b                 Set selected file as the base',
+  '  Tab / →           Back to the matrix',
   '',
   'Editing — operates on the focused (key, file) cell',
   '  e  /  Enter       Edit the cell value',
@@ -89,22 +104,29 @@ const HELP_TEXT = [
   'View',
   '  /                 Filter keys (Esc clears, Enter keeps)',
   '  v                 Toggle: show all keys ↔ only drifting keys',
-  '  g                 Toggle: group by comment banner ↔ key prefix',
+  '  g                 Toggle: group by key prefix ↔ comment banner',
   '',
   'Help & exit',
   '  ?                 Toggle this overlay',
   '  q                 Quit (press twice if there are unsaved changes)',
   '  Ctrl-C            Force quit without confirmation',
   '',
+  'Sidebar markers   ▶ pane focus · ● dirty · ★ base · ▸ matrix col · ✓/☐ enabled',
+  '',
   'Symbols in cells',
   '  ≠ value           Differs from base',
   '  ✗ missing         Key is in base but missing here',
   '  ★ value           Key is here but not in base',
+  '  —                 Present but empty',
   '  •••• (N)          Secret-suspect value masked by length'
 ].join('\n');
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
+  // The full discovered file list never changes; the matrix is rebuilt from
+  // the currently *enabled* subset whenever the user toggles a file.
+  const allFiles = initialMatrix.files.slice();
+  let currentBase = initialMatrix.base;
   let matrix = initialMatrix;
 
   const state: State = {
@@ -118,9 +140,12 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     message: null,
     driftOnly: false,
     confirmQuit: false,
-    grouping: 'banner',
+    grouping: 'prefix',
     helpOpen: false,
-    undo: []
+    undo: [],
+    pane: 'matrix',
+    sidebarIdx: 0,
+    enabled: new Set(allFiles)
   };
 
   const pushUndo = (entry: UndoEntry) => {
@@ -318,7 +343,19 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   };
 
   const rebuildMatrix = () => {
-    matrix = buildMatrix(matrix.files, matrix.base);
+    const enabledList = allFiles.filter((f) => state.enabled.has(f));
+    if (!state.enabled.has(currentBase)) {
+      // Base got disabled — promote the first enabled file.
+      const next = enabledList[0];
+      if (next) currentBase = next;
+    }
+    matrix = buildMatrix(enabledList, currentBase);
+    if (state.colIdx >= matrix.files.length) {
+      state.colIdx = Math.max(0, matrix.files.length - 1);
+    }
+    if (state.sidebarIdx >= allFiles.length) {
+      state.sidebarIdx = Math.max(0, allFiles.length - 1);
+    }
     recomputeVisibleKeys();
   };
 
@@ -344,7 +381,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
   const refresh = () => {
     const valueColWidth = computeValueColWidth();
-    refreshSidebar(sidebar, renderer, matrix, state);
+    refreshSidebar(sidebar, renderer, matrix, allFiles, state);
     refreshMatrix(
       matrixBox,
       headerHost,
@@ -432,6 +469,44 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       state.dirty.add(file);
       rebuildMatrix();
       state.message = `Deleted ${key} from ${basename(file.path)}. Ctrl-S to save.`;
+      refresh();
+    };
+
+    const toggleEnabled = () => {
+      const file = allFiles[state.sidebarIdx];
+      if (!file) return;
+      if (state.enabled.has(file)) {
+        if (state.enabled.size === 1) {
+          state.message = 'At least one file must stay enabled.';
+          refresh();
+          return;
+        }
+        state.enabled.delete(file);
+        state.message = `Hidden ${basename(file.path)} from the matrix.`;
+      } else {
+        state.enabled.add(file);
+        state.message = `Showing ${basename(file.path)} in the matrix.`;
+      }
+      rebuildMatrix();
+      refresh();
+    };
+
+    const setBase = () => {
+      const file = allFiles[state.sidebarIdx];
+      if (!file) return;
+      if (!state.enabled.has(file)) {
+        state.message = `Cannot set ${basename(file.path)} as base — file is hidden.`;
+        refresh();
+        return;
+      }
+      if (file === currentBase) {
+        state.message = `${basename(file.path)} is already the base.`;
+        refresh();
+        return;
+      }
+      currentBase = file;
+      rebuildMatrix();
+      state.message = `${basename(file.path)} is now the base.`;
       refresh();
     };
 
@@ -530,14 +605,15 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           refresh();
           return;
         }
-        const newPath = join(dirname(matrix.base.path), name);
-        if (matrix.files.some((f) => f.path === newPath)) {
+        const newPath = join(dirname(currentBase.path), name);
+        if (allFiles.some((f) => f.path === newPath)) {
           state.message = `${name} already exists.`;
           refresh();
           return;
         }
         const newFile = createEmptyEnvFile(newPath);
-        matrix.files.push(newFile);
+        allFiles.push(newFile);
+        state.enabled.add(newFile);
         state.dirty.add(newFile);
         rebuildMatrix();
         state.colIdx = matrix.files.indexOf(newFile);
@@ -647,9 +723,44 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         state.message = null;
       }
 
+      if (state.pane === 'sidebar') {
+        switch (key.name) {
+          case 'q':
+            return tryQuit();
+          case 'tab':
+            state.pane = 'matrix';
+            return refresh();
+          case 'right':
+            state.pane = 'matrix';
+            return refresh();
+          case 'up':
+            state.sidebarIdx = Math.max(0, state.sidebarIdx - 1);
+            return refresh();
+          case 'down':
+            state.sidebarIdx = Math.min(
+              allFiles.length - 1,
+              state.sidebarIdx + 1
+            );
+            return refresh();
+          case 'space':
+            return toggleEnabled();
+          case 'b':
+            return setBase();
+        }
+        if (key.sequence === ' ') return toggleEnabled();
+        if (key.sequence === '?') {
+          state.helpOpen = true;
+          return refresh();
+        }
+        return;
+      }
+
       switch (key.name) {
         case 'q':
           return tryQuit();
+        case 'tab':
+          state.pane = 'sidebar';
+          return refresh();
         case 'up':
           state.rowIdx = Math.max(0, state.rowIdx - 1);
           return refresh();
@@ -660,6 +771,11 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           );
           return refresh();
         case 'left':
+          if (state.colIdx === 0) {
+            // Already at the leftmost matrix column — hand focus to the sidebar.
+            state.pane = 'sidebar';
+            return refresh();
+          }
           state.colIdx = Math.max(0, state.colIdx - 1);
           return refresh();
         case 'right':
@@ -722,21 +838,43 @@ function refreshSidebar(
   sidebar: BoxRenderable,
   renderer: CliRenderer,
   matrix: Matrix,
+  allFiles: EnvFile[],
   state: State
 ): void {
-  sidebar.title = ` Files (${matrix.files.length}) `;
+  const total = allFiles.length;
+  const enabled = state.enabled.size;
+  sidebar.title =
+    state.pane === 'sidebar'
+      ? ` Files ${enabled}/${total} • focused `
+      : ` Files ${enabled}/${total} `;
   removeAllChildren(sidebar);
-  for (let i = 0; i < matrix.files.length; i++) {
-    const file = matrix.files[i]!;
+  for (let i = 0; i < allFiles.length; i++) {
+    const file = allFiles[i]!;
     const isBase = file === matrix.base;
     const isDirty = state.dirty.has(file);
-    const isFocusCol = i === state.colIdx;
-    const marker = `${isDirty ? '●' : ' '}${isBase ? '★' : ' '}${isFocusCol ? '▸' : ' '}`;
+    const isEnabled = state.enabled.has(file);
+    const matrixIdx = matrix.files.indexOf(file);
+    const isFocusCol = isEnabled && matrixIdx === state.colIdx;
+    const isPaneFocus = state.pane === 'sidebar' && i === state.sidebarIdx;
+    const marker =
+      `${isPaneFocus ? '▶' : ' '}` +
+      `${isDirty ? '●' : ' '}` +
+      `${isBase ? '★' : ' '}` +
+      `${isFocusCol ? '▸' : ' '}` +
+      `${isEnabled ? '✓' : '☐'}`;
+    const fg = !isEnabled
+      ? COLORS.fgDim
+      : isDirty
+        ? COLORS.fgDirty
+        : isBase
+          ? COLORS.fgBase
+          : COLORS.fg;
     sidebar.add(
       new TextRenderable(renderer, {
         id: `file-${file.path}`,
         content: `${marker} ${basename(file.path)}`,
-        fg: isDirty ? COLORS.fgDirty : isBase ? COLORS.fgBase : COLORS.fg
+        fg,
+        wrapMode: 'none'
       })
     );
   }
@@ -826,10 +964,15 @@ function refreshFooter(
     // user's attention stays on the popup.
     hintA.content = '';
     hintB.content = '';
+  } else if (state.pane === 'sidebar') {
+    hintA.content =
+      `↑↓ move · Space toggle · b set base · Tab/→ matrix · ` +
+      `^S save · ? help · q quit${dirtyLabel}`;
+    hintB.content = 'Files pane';
   } else {
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
-      `↑↓←→ move · e edit · a add · d del · n new · ` +
+      `↑↓←→ move · Tab files · e edit · a add · d del · n new · ` +
       `^Z undo · ^S save · / filter · ? help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
@@ -1008,10 +1151,11 @@ function buildSectionDivider(
   name: string | undefined,
   width: number
 ): BoxRenderable {
-  // A single-line banner that spans the full matrix width. When `name` is
-  // undefined the divider is just a horizontal rule (separates extras /
-  // unsectioned keys from the previous group).
-  const label = name ? ` ${name} ` : '';
+  // A single-line banner that spans the full matrix width. When the section
+  // is unnamed (e.g. keys without a comment banner or no underscore prefix),
+  // label it explicitly so the user sees it as a deliberate group rather
+  // than a stray rule.
+  const label = name ? ` ${name} ` : ' (other) ';
   const rule = '─';
   const visible = Math.max(0, width - 2);
   const beforeLen = Math.max(2, Math.floor((visible - label.length) / 2));
