@@ -22,6 +22,8 @@ type Prompt =
   | { kind: 'add-value'; key: string; file: EnvFile }
   | { kind: 'new-file' };
 
+type Grouping = 'banner' | 'prefix';
+
 interface State {
   mode: Mode;
   filter: string;
@@ -33,6 +35,7 @@ interface State {
   message: string | null;
   driftOnly: boolean;
   confirmQuit: boolean;
+  grouping: Grouping;
 }
 
 const COLORS = {
@@ -69,7 +72,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     visibleKeys: matrix.keys.slice(),
     message: null,
     driftOnly: false,
-    confirmQuit: false
+    confirmQuit: false,
+    grouping: 'banner'
   };
 
   // --- Layout ---
@@ -172,12 +176,17 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   footer.add(promptInput);
 
   // --- State helpers ---
+  const sectionOf = (key: string): string | undefined =>
+    state.grouping === 'banner' ? matrix.sectionOf(key) : prefixSection(key);
+
   const recomputeVisibleKeys = () => {
-    state.visibleKeys = matrix.keys.filter((k) => {
+    const filtered = matrix.keys.filter((k) => {
       if (!matchesFilter(k, state.filter)) return false;
       if (state.driftOnly && !keyDrifts(matrix, k)) return false;
       return true;
     });
+    state.visibleKeys =
+      state.grouping === 'prefix' ? groupByPrefix(filtered) : filtered;
     if (state.rowIdx >= state.visibleKeys.length) {
       state.rowIdx = Math.max(0, state.visibleKeys.length - 1);
     }
@@ -218,7 +227,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       renderer,
       matrix,
       state,
-      valueColWidth
+      valueColWidth,
+      sectionOf
     );
     refreshFooter(hint, status, promptLabel, filterInput, promptInput, state);
   };
@@ -489,6 +499,20 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
             : 'Full view.';
           recomputeVisibleKeys();
           return refresh();
+        case 'g': {
+          const prevKey = state.visibleKeys[state.rowIdx];
+          state.grouping = state.grouping === 'banner' ? 'prefix' : 'banner';
+          recomputeVisibleKeys();
+          if (prevKey) {
+            const newIdx = state.visibleKeys.indexOf(prevKey);
+            if (newIdx >= 0) state.rowIdx = newIdx;
+          }
+          state.message =
+            state.grouping === 'banner'
+              ? 'Group by comment banners.'
+              : 'Group by key prefix (first underscore segment).';
+          return refresh();
+        }
       }
 
       if (key.sequence === '/' || key.name === 'slash') {
@@ -537,7 +561,8 @@ function refreshMatrix(
   renderer: CliRenderer,
   matrix: Matrix,
   state: State,
-  valueColWidth: number
+  valueColWidth: number,
+  sectionOf: (key: string) => string | undefined
 ): void {
   matrixBox.title = matrixTitle(matrix, state);
   removeAllChildren(headerHost);
@@ -557,7 +582,7 @@ function refreshMatrix(
   let lastSection: string | undefined;
   for (let r = 0; r < state.visibleKeys.length; r++) {
     const key = state.visibleKeys[r]!;
-    const section = matrix.sectionOf(key);
+    const section = sectionOf(key);
     if (section !== lastSection) {
       const totalWidth = KEY_COL_WIDTH + valueColWidth * matrix.files.length;
       scrollBox.content.add(
@@ -614,9 +639,11 @@ function refreshFooter(
     promptLabel.content = ' Filter:';
   } else {
     const viewLabel = state.driftOnly ? ' [diff]' : '';
+    const groupLabel = state.grouping === 'prefix' ? ' [prefix]' : '';
     hint.content =
       `[↑↓←→] move  [e] edit  [a] add  [d] del  [n] new  ` +
-      `[v] view${viewLabel}  [/] filter  [Ctrl-S] save  [q] quit${dirtyLabel}`;
+      `[v] view${viewLabel}  [g] group${groupLabel}  ` +
+      `[/] filter  [Ctrl-S] save  [q] quit${dirtyLabel}`;
     promptLabel.content = '';
   }
   filterInput.width = state.mode === 'filter' ? 40 : 0;
@@ -638,6 +665,35 @@ function promptLabelText(p: Prompt): string {
 }
 
 // --- Helpers ---
+
+function prefixSection(key: string): string | undefined {
+  const idx = key.indexOf('_');
+  if (idx <= 0) return undefined;
+  return key.slice(0, idx);
+}
+
+/**
+ * Sort by first-underscore-prefix while preserving the relative order each
+ * prefix first appeared in. Keys without an underscore land in a trailing
+ * "Other" group keeping their authored order.
+ */
+function groupByPrefix(keys: string[]): string[] {
+  const groups = new Map<string, string[]>();
+  const order: string[] = [];
+  const OTHER = '__other__';
+  for (const k of keys) {
+    const p = prefixSection(k) ?? OTHER;
+    let bucket = groups.get(p);
+    if (!bucket) {
+      bucket = [];
+      groups.set(p, bucket);
+      if (p !== OTHER) order.push(p);
+    }
+    bucket.push(k);
+  }
+  if (groups.has(OTHER)) order.push(OTHER);
+  return order.flatMap((p) => groups.get(p)!);
+}
 
 function keyDrifts(matrix: Matrix, key: string): boolean {
   for (const file of matrix.files) {
