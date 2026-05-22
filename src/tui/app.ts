@@ -238,10 +238,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const promptBox = new BoxRenderable(renderer, {
     id: 'prompt-box',
     position: 'absolute',
-    top: '35%',
+    top: '20%',
     left: '15%',
     right: '15%',
-    height: 7,
+    height: 8,
     zIndex: 50,
     border: true,
     borderStyle: 'rounded',
@@ -251,6 +251,13 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     visible: false,
     backgroundColor: RGBA.fromHex('#1a1a1a'),
     flexDirection: 'column'
+  });
+  // Body of the modal is rebuilt on every refresh — either the context table
+  // (edit / add-value) or just a single input row (add-key / new-file).
+  const promptBody = new BoxRenderable(renderer, {
+    id: 'prompt-body',
+    flexDirection: 'column',
+    flexGrow: 1
   });
   const promptInput = new InputRenderable(renderer, {
     id: 'prompt-input',
@@ -263,7 +270,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     height: 1,
     marginTop: 1
   });
-  promptBox.add(promptInput);
+  promptBox.add(promptBody);
   promptBox.add(promptHint);
   renderer.root.add(promptBox);
 
@@ -349,7 +356,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       sectionOf
     );
     refreshFooter(hintA, hintB, status, filterInput, state);
-    refreshPrompt(promptBox, promptInput, state);
+    refreshPrompt(promptBox, promptBody, promptInput, renderer, matrix, state);
     helpBox.visible = state.helpOpen;
   };
 
@@ -834,14 +841,74 @@ function refreshFooter(
 
 function refreshPrompt(
   promptBox: BoxRenderable,
+  promptBody: BoxRenderable,
   promptInput: InputRenderable,
+  renderer: CliRenderer,
+  matrix: Matrix,
   state: State
 ): void {
   const open = state.mode === 'prompt' && state.prompt !== null;
   promptBox.visible = open;
   promptInput.visible = open;
-  if (open && state.prompt) {
-    promptBox.title = promptLabelText(state.prompt);
+  if (!open || !state.prompt) return;
+
+  promptBox.title = promptLabelText(state.prompt);
+
+  // Rebuild the body. Edit / add-value get a per-file context table with the
+  // input slotted into the focused file's row. add-key and new-file just
+  // render the input alone.
+  removeAllChildren(promptBody);
+  const p = state.prompt;
+  if (p.kind === 'edit' || p.kind === 'add-value') {
+    const labelWidth = Math.min(
+      26,
+      Math.max(...matrix.files.map((f) => basename(f.path).length + 4))
+    );
+    const secret = isSecretKey(p.key);
+    promptBox.height = Math.min(20, 4 + matrix.files.length + 2);
+    for (const file of matrix.files) {
+      const isTarget = file === p.file;
+      const row = new BoxRenderable(renderer, {
+        id: `prompt-row-${file.path}`,
+        flexDirection: 'row',
+        height: 1,
+        flexShrink: 0
+      });
+      const label = `${isTarget ? '▸ ' : '  '}${basename(file.path)}`;
+      row.add(
+        new TextRenderable(renderer, {
+          id: `prompt-row-${file.path}-label`,
+          content: label.padEnd(labelWidth),
+          fg: isTarget ? COLORS.fgBase : COLORS.fgDim,
+          height: 1,
+          wrapMode: 'none'
+        })
+      );
+      if (isTarget) {
+        // The single shared InputRenderable goes here so its state survives
+        // across rebuilds.
+        row.add(promptInput);
+      } else {
+        const entry = findKvEntry(file, p.key);
+        const text = entry
+          ? renderCellText('same', entry.value, secret)
+          : '✗ missing';
+        row.add(
+          new TextRenderable(renderer, {
+            id: `prompt-row-${file.path}-value`,
+            content: text,
+            fg: entry ? COLORS.fg : COLORS.missing,
+            height: 1,
+            wrapMode: 'none'
+          })
+        );
+      }
+      promptBody.add(row);
+    }
+  } else {
+    // add-key / new-file → input only.
+    promptBox.height = 6;
+    promptBody.add(promptInput);
   }
 }
 
