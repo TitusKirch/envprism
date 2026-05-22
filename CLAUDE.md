@@ -2,45 +2,42 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What this repo is
+## Project
 
-`scaffold` is a **GitHub template repository**, not an application. It ships the meta layer (lint, format, commit hooks, CI, CodeQL, Dependabot, release-please, issue/PR templates, standard meta docs) that every new kirchDev repo should start with. There is no application code — the project code can be anything (PHP, Go, Rust, Vue, shell). Only the meta layer lives here.
+`envprism` is a TUI-based env file manager: it discovers `.env*` files in a directory and shows them as a matrix (rows = variable keys, columns = files) so n-way differences are visible at a glance, with inline editing that writes back to the original files preserving comment/key order.
 
-Implication: when changing files, ask "does this default make sense for *every* future repo created from this template?" — not just for one project type.
+Distributed as a CLI (`npx envprism`, `pnpm dlx envprism`). The repository is currently in **bootstrap** state — meta layer (tooling, CI, release-please) is in place; no application source code exists yet. See `TEMP_AI.md` for the original bootstrap brief (delete once the project is past bootstrap).
+
+## Target stack
+
+- Node **24+** (pinned via `.nvmrc`) and **pnpm 11** (pinned via `packageManager` + `.npmrc`).
+- TUI framework: **[anomalyco/opentui](https://github.com/anomalyco/opentui)** is the primary candidate. Evaluate fit before writing UI code; fall back to `ink` or `blessed` if it doesn't work out.
+- ESM only (`"type": "module"`).
 
 ## Commands
 
-| Command            | What it does                                              |
-| :----------------- | :-------------------------------------------------------- |
-| `pnpm install`     | Install deps and wire husky hooks via the `prepare` script |
-| `pnpm lint`        | `oxlint . --deny-warnings`                                 |
-| `pnpm format`      | `oxfmt --check .` (note: `format` is the check, not fix)   |
-| `pnpm check`       | Runs `lint` + `format` — the CI gate                       |
-| `pnpm lint:fix`    | Auto-fix lint                                              |
-| `pnpm format:fix`  | Auto-fix format                                            |
-| `pnpm check:fix`   | Auto-fix lint + format                                     |
-| `pnpm taze`        | Interactive dependency upgrade check                       |
-| `pnpm taze:w`      | Write upgrade results                                      |
+| Command          | What it does                                       |
+| :--------------- | :------------------------------------------------- |
+| `pnpm install`   | Installs deps and activates Husky hooks (prepare). |
+| `pnpm lint`      | `oxlint .` with `--deny-warnings`.                 |
+| `pnpm format`    | `oxfmt --check .` across JS/JSON/YAML/MD.          |
+| `pnpm check`     | `lint` then `format` — the CI gate.                |
+| `pnpm check:fix` | Auto-fix lint + format.                            |
+| `pnpm taze`      | Interactive dependency upgrades (`-w` to write).   |
 
-There is no test suite — this is config-only. CI runs `pnpm lint` and `pnpm format` on PR.
+No test runner is wired up yet — when adding one, also expose it as `pnpm test` and add it to `check` / CI.
 
-## Architecture / conventions
+## Tooling conventions
 
-- **Node 24, pnpm 11.** Pinned via `.nvmrc`, `engines`, and `packageManager`. `.npmrc` enforces `minimumReleaseAge=4320` (3-day cooldown), `trustPolicy=no-downgrade`, isolated node-linker. Don't loosen these without reason.
-- **oxc, not eslint/prettier.** Linting via `oxlint`, formatting via `oxfmt`. Configs live in `.oxlintrc.json` / `.oxfmtrc.json`. `oxlint` uses `unicorn` + `oxc` plugins; rules deliberately minimal.
-- **Husky hooks** (`.husky/pre-commit`, `.husky/commit-msg`) run `lint-staged` and `commitlint`. `lint-staged.config.js` excludes `README.md` (free-form prose) and `pnpm-lock.yaml`. `oxlint --fix --deny-warnings` then `oxfmt` on JS; `oxfmt` only on JSON/YAML/MD.
-- **Conventional Commits enforced** via `@commitlint/config-conventional`. Don't `--no-verify` unless explicitly asked.
-- **release-please is included** (unlike many templates that omit it). Files: `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/release-please.yml`. Config uses `release-type: simple` (language-agnostic), `include-v-in-tag: true`. Downstream repos start at `0.0.0` and reset via the steps in README → *Resetting release-please*.
-- **Workflows** use `actions/checkout@v6`, `actions/setup-node@v6`, `pnpm/action-setup@v6`, `github/codeql-action/{init,analyze}@v4`. Keep these pinned to major versions; Dependabot bumps them monthly.
-- **CodeQL** scans `actions` + `javascript-typescript` with `security-extended,security-and-quality` queries, gated by path filters so non-code changes don't trigger it.
-- **Dependabot** groups all minor/patch updates per ecosystem into a single PR (`npm-minor-patch`, `actions-minor-patch`). Majors come as separate PRs.
+- **Lint/format are oxc (oxlint + oxfmt), not ESLint/Prettier.** Configs: `.oxlintrc.json`, `.oxfmtrc.json`. `oxfmt` ignores `README.md`, `CHANGELOG.md`, and `pnpm-lock.yaml`.
+- **Conventional Commits enforced** via `commitlint` on `commit-msg`; `lint-staged` runs `oxlint --fix` + `oxfmt` on `pre-commit`. Don't bypass with `--no-verify` unless explicitly asked.
+- **Release-please** is wired up (workflow + `release-please-config.json` + `.release-please-manifest.json` at `0.0.0`). Conventional commits on `main` drive version bumps and CHANGELOG generation. `release-type: simple`, tags include `v` prefix.
+- **CI** (`.github/workflows/ci.yml`) only runs `pnpm lint` + `pnpm format` on PRs (skips drafts). CodeQL runs on push/PR + weekly.
+- **Dependabot**: npm weekly, GitHub Actions monthly. `taze.config.js` exists for interactive bumps.
 
-## House style for READMEs and meta files
+## Working with this repo
 
-`/write-readme` skill encodes the canonical structure. Key rules: hero block wrapped in `<div align="center">`, prescribed section emojis (✨ Features, 🚀 Setup, 🤝 Contributing, 🛣️ Versioning, 📄 License), license footer always reads `[MIT](LICENSE) © [Titus Kirch](https://github.com/TitusKirch/) / [IT-Dienstleistungen Titus Kirch](https://kirch.dev)`. Use GitHub callouts (`> [!TIP]`, `> [!IMPORTANT]`), never plain blockquotes.
-
-## When editing this template
-
-- Every file referencing `TitusKirch/scaffold` is a placeholder that downstream users will replace. Keep the references consistent so a single `grep -rn "TitusKirch/scaffold"` catches them all.
-- `forgemap` (sibling repo at `../forgemap`) is the de-facto reference implementation of these conventions. When unsure about a config choice, check what forgemap does.
-- The template's own `package.json` is `"private": true` and `"name": "scaffold"` — not published anywhere.
+- Match existing kirchDev house style for any new meta files — do not invent new conventions; this repo was bootstrapped from `TitusKirch/scaffold` and the README structure / SECURITY / CONTRIBUTING patterns should stay aligned with that.
+- Keep PRs small and single-concern. The TUI rendering is the riskiest piece — prove the rendering approach with a read-only view before investing in edit logic.
+- When writing back to `.env` files, use a custom serializer (not `dotenv`'s — it doesn't round-trip). Preserve comments and key order in the original file.
+- Out of scope for v0: encryption, remote secrets backends, schema validation, env templating. Keep the architecture open to them but don't ship them.

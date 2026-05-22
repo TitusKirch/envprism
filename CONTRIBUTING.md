@@ -1,4 +1,4 @@
-# Contributing to scaffold
+# Contributing to envprism
 
 Thanks for taking the time to contribute! 🛠️ This document covers what you need to get a PR landed.
 
@@ -8,9 +8,9 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ## Reporting issues
 
-- **Bugs**: open a [Bug report](https://github.com/TitusKirch/scaffold/issues/new?template=bug_report.yml) with a minimal reproduction if at all possible.
-- **Feature requests**: open a [Feature request](https://github.com/TitusKirch/scaffold/issues/new?template=feature_request.yml).
-- **Questions**: open a [Question](https://github.com/TitusKirch/scaffold/issues/new?template=question.yml).
+- **Bugs**: open a [Bug report](https://github.com/TitusKirch/envprism/issues/new?template=bug_report.yml) with a minimal reproduction if at all possible.
+- **Feature requests**: open a [Feature request](https://github.com/TitusKirch/envprism/issues/new?template=feature_request.yml).
+- **Questions**: open a [Question](https://github.com/TitusKirch/envprism/issues/new?template=question.yml).
 - **Security vulnerabilities**: **do not** open a public issue. Follow [SECURITY.md](SECURITY.md).
 
 ## Development setup
@@ -23,8 +23,8 @@ Requirements:
 Clone and install:
 
 ```bash
-git clone https://github.com/TitusKirch/scaffold.git
-cd scaffold
+git clone https://github.com/TitusKirch/envprism.git
+cd envprism
 pnpm install   # wires husky hooks
 ```
 

@@ -2,28 +2,28 @@
 
 ## Scope
 
-`scaffold` is a **template repository** — it contains configuration files, GitHub workflows, and meta documents that are copied into new repositories. It is not a runtime package and has no users in the traditional sense.
+`envprism` is a CLI / TUI tool for managing `.env` files. Because it reads and writes files that frequently contain secrets, security issues are taken seriously.
 
-The supported "version" is always the **tip of `main`**. There are no historical branches to back-port fixes to; downstream repositories should re-pull the relevant file(s) from `main` if a vulnerability is discovered in the shipped templates.
+The supported version is always the **latest published release** (and the tip of `main` for unreleased fixes). Older versions are not back-patched.
 
 ## Reporting a Vulnerability
 
 **Please do not file a public GitHub issue for security problems.**
 
-In the context of this template, a "vulnerability" typically means:
+Relevant vulnerability categories include:
 
-- An insecure default in a shipped workflow (e.g. overly broad `permissions`).
-- A misconfigured Action that could leak secrets.
-- A dependency in `package.json` that introduces a known CVE.
+- Unintended disclosure of secret values (logs, error messages, crash dumps).
+- File write paths that could clobber or corrupt env files outside the expected scope.
+- Dependency in `package.json` introducing a known CVE that affects users.
 
 Use one of the following private channels:
 
-1. **GitHub Private Vulnerability Reporting** (preferred): open a private advisory at <https://github.com/TitusKirch/scaffold/security/advisories/new>.
+1. **GitHub Private Vulnerability Reporting** (preferred): open a private advisory at <https://github.com/TitusKirch/envprism/security/advisories/new>.
 2. **Email**: [titus.kirch@kirch.dev](mailto:titus.kirch@kirch.dev). PGP available on request.
 
 Please include:
 
-- A description of the vulnerability and its impact on downstream repositories.
+- A description of the vulnerability and its impact on users.
 - Steps to reproduce.
 - Any suggested fix, if you have one.
 
