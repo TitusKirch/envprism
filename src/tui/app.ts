@@ -36,6 +36,7 @@ interface State {
   driftOnly: boolean;
   confirmQuit: boolean;
   grouping: Grouping;
+  helpOpen: boolean;
 }
 
 const COLORS = {
@@ -58,6 +59,35 @@ const ROW_GAP = 0;
 const CELL_PAD_X = 1;
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+const HELP_TEXT = [
+  'Navigation',
+  '  ↑ ↓ ← →           Move focused cell',
+  '  Mouse wheel       Scroll the matrix (both axes)',
+  '',
+  'Editing — operates on the focused (key, file) cell',
+  '  e  /  Enter       Edit the cell value',
+  '  a                 Add a new key to the focused file',
+  '  d                 Delete the key from the focused file',
+  '  n                 Create a new env file (sibling of the base)',
+  '  Ctrl-S            Write every dirty file to disk',
+  '',
+  'View',
+  '  /                 Filter keys (Esc clears, Enter keeps)',
+  '  v                 Toggle: show all keys ↔ only drifting keys',
+  '  g                 Toggle: group by comment banner ↔ key prefix',
+  '',
+  'Help & exit',
+  '  ?                 Toggle this overlay',
+  '  q                 Quit (press twice if there are unsaved changes)',
+  '  Ctrl-C            Force quit without confirmation',
+  '',
+  'Symbols in cells',
+  '  ≠ value           Differs from base',
+  '  ✗ missing         Key is in base but missing here',
+  '  ★ value           Key is here but not in base',
+  '  •••• (N)          Secret-suspect value masked by length'
+].join('\n');
+
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
   let matrix = initialMatrix;
@@ -73,7 +103,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     message: null,
     driftOnly: false,
     confirmQuit: false,
-    grouping: 'banner'
+    grouping: 'banner',
+    helpOpen: false
   };
 
   // --- Layout ---
@@ -197,6 +228,32 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   footer.add(promptInput);
 
+  // Floating help overlay. Hidden until '?' opens it.
+  const helpBox = new BoxRenderable(renderer, {
+    id: 'help-overlay',
+    position: 'absolute',
+    top: 2,
+    left: 4,
+    right: 4,
+    bottom: 2,
+    zIndex: 100,
+    border: true,
+    borderStyle: 'rounded',
+    title: ' Keybindings ',
+    paddingX: 2,
+    paddingY: 1,
+    visible: false,
+    backgroundColor: RGBA.fromHex('#1a1a1a')
+  });
+  helpBox.add(
+    new TextRenderable(renderer, {
+      id: 'help-text',
+      content: HELP_TEXT,
+      fg: COLORS.fg
+    })
+  );
+  renderer.root.add(helpBox);
+
   // --- State helpers ---
   const sectionOf = (key: string): string | undefined =>
     state.grouping === 'banner' ? matrix.sectionOf(key) : prefixSection(key);
@@ -261,6 +318,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       promptInput,
       state
     );
+    helpBox.visible = state.helpOpen;
   };
 
   recomputeVisibleKeys();
@@ -441,6 +499,14 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       ctrl?: boolean;
       sequence?: string;
     }) => {
+      if (state.helpOpen) {
+        if (key.name === 'escape' || key.sequence === '?' || key.name === 'q') {
+          state.helpOpen = false;
+          refresh();
+        }
+        return;
+      }
+
       if (state.mode === 'prompt') {
         if (key.name === 'escape') cancelPrompt();
         else if (key.name === 'return') commitPrompt();
@@ -549,6 +615,12 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         state.mode = 'filter';
         state.message = null;
         filterInput.focus();
+        refresh();
+        return;
+      }
+
+      if (key.sequence === '?') {
+        state.helpOpen = true;
         refresh();
       }
     };
@@ -674,7 +746,7 @@ function refreshFooter(
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
       `↑↓←→ move · e edit · a add · d del · n new · ` +
-      `/ filter · ^S save · q quit${dirtyLabel}`;
+      `/ filter · ^S save · ? help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
       `g group: ${state.grouping}`;
