@@ -141,23 +141,42 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const footer = new BoxRenderable(renderer, {
     id: 'footer',
     flexDirection: 'column',
+    flexShrink: 0,
     paddingX: 1
   });
   root.add(footer);
 
-  const hint = new TextRenderable(renderer, { id: 'hint', content: '' });
-  footer.add(hint);
+  const hintA = new TextRenderable(renderer, {
+    id: 'hint-a',
+    content: '',
+    wrapMode: 'none',
+    height: 1
+  });
+  footer.add(hintA);
+
+  const hintB = new TextRenderable(renderer, {
+    id: 'hint-b',
+    content: '',
+    wrapMode: 'none',
+    fg: COLORS.fgDim,
+    height: 1
+  });
+  footer.add(hintB);
 
   const status = new TextRenderable(renderer, {
     id: 'status',
     content: '',
-    fg: COLORS.fgDim
+    fg: COLORS.fgDim,
+    wrapMode: 'none',
+    height: 1
   });
   footer.add(status);
 
   const promptLabel = new TextRenderable(renderer, {
     id: 'prompt-label',
-    content: ''
+    content: '',
+    wrapMode: 'none',
+    height: 1
   });
   footer.add(promptLabel);
 
@@ -230,7 +249,15 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       valueColWidth,
       sectionOf
     );
-    refreshFooter(hint, status, promptLabel, filterInput, promptInput, state);
+    refreshFooter(
+      hintA,
+      hintB,
+      status,
+      promptLabel,
+      filterInput,
+      promptInput,
+      state
+    );
   };
 
   recomputeVisibleKeys();
@@ -621,7 +648,8 @@ function refreshMatrix(
 }
 
 function refreshFooter(
-  hint: TextRenderable,
+  hintA: TextRenderable,
+  hintB: TextRenderable,
   status: TextRenderable,
   promptLabel: TextRenderable,
   filterInput: InputRenderable,
@@ -632,18 +660,21 @@ function refreshFooter(
   const dirtyLabel = dirty > 0 ? `  ●${dirty} unsaved` : '';
 
   if (state.mode === 'prompt' && state.prompt) {
-    hint.content = `[Enter] confirm   [Esc] cancel${dirtyLabel}`;
+    hintA.content = `[Enter] confirm   [Esc] cancel${dirtyLabel}`;
+    hintB.content = '';
     promptLabel.content = promptLabelText(state.prompt);
   } else if (state.mode === 'filter') {
-    hint.content = `[Enter] keep filter   [Esc] clear${dirtyLabel}`;
+    hintA.content = `[Enter] keep filter   [Esc] clear${dirtyLabel}`;
+    hintB.content = '';
     promptLabel.content = ' Filter:';
   } else {
-    const viewLabel = state.driftOnly ? 'drift' : 'all';
-    const groupLabel = state.grouping;
-    hint.content =
-      `[↑↓←→] move  [e] edit  [a] add  [d] del  [n] new  ` +
-      `[v] view: ${viewLabel}  [g] group: ${groupLabel}  ` +
-      `[/] filter  [Ctrl-S] save  [q] quit${dirtyLabel}`;
+    // Line 1: actions (always visible). Line 2: current modes.
+    hintA.content =
+      `↑↓←→ move · e edit · a add · d del · n new · ` +
+      `/ filter · ^S save · q quit${dirtyLabel}`;
+    hintB.content =
+      `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
+      `g group: ${state.grouping}`;
     promptLabel.content = '';
   }
   filterInput.width = state.mode === 'filter' ? 40 : 0;
