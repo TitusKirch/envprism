@@ -1,4 +1,5 @@
 import { defineCommand } from 'citty';
+import { diffCommand } from './commands/diff.ts';
 
 export const rootCommand = defineCommand({
   meta: {
@@ -6,10 +7,9 @@ export const rootCommand = defineCommand({
     description:
       'TUI-based env file manager — refract one set of variables into many environment views.'
   },
-  run() {
-    // PR 1 bootstrap stub — TUI command lands in a later PR.
-    console.log(
-      'envprism: bootstrap stub. TUI and `diff` subcommand land in follow-up PRs.'
-    );
+  subCommands: {
+    diff: diffCommand
   }
+  // The default invocation will launch the TUI in a follow-up PR. Until then,
+  // citty prints help when no subcommand is given.
 });
