@@ -111,7 +111,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     title: '',
     flexDirection: 'column',
     flexGrow: 1,
-    paddingX: 1
+    paddingX: 1,
+    // Reserve a row at the bottom so the ScrollBox's horizontal scrollbar
+    // does not overlap the matrix box's bottom border.
+    paddingBottom: 1
   });
   body.add(matrixBox);
 
@@ -677,8 +680,8 @@ function refreshFooter(
       `g group: ${state.grouping}`;
     promptLabel.content = '';
   }
-  filterInput.width = state.mode === 'filter' ? 40 : 0;
-  promptInput.width = state.mode === 'prompt' ? 60 : 0;
+  filterInput.visible = state.mode === 'filter';
+  promptInput.visible = state.mode === 'prompt';
   status.content = state.message ?? '';
 }
 
