@@ -24,6 +24,19 @@ type Prompt =
 
 type Grouping = 'banner' | 'prefix';
 
+type UndoEntry =
+  | {
+      kind: 'edit';
+      file: EnvFile;
+      entry: KvEntry;
+      prevValue: string;
+      prevRaw: string;
+    }
+  | { kind: 'add-kv'; file: EnvFile; entry: KvEntry }
+  | { kind: 'delete-kv'; file: EnvFile; entry: KvEntry; idx: number };
+
+const UNDO_LIMIT = 50;
+
 interface State {
   mode: Mode;
   filter: string;
@@ -37,6 +50,7 @@ interface State {
   confirmQuit: boolean;
   grouping: Grouping;
   helpOpen: boolean;
+  undo: UndoEntry[];
 }
 
 const COLORS = {
@@ -69,6 +83,7 @@ const HELP_TEXT = [
   '  a                 Add a new key to the focused file',
   '  d                 Delete the key from the focused file',
   '  n                 Create a new env file (sibling of the base)',
+  '  Ctrl-Z            Undo last edit/add/delete',
   '  Ctrl-S            Write every dirty file to disk',
   '',
   'View',
@@ -104,7 +119,13 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     driftOnly: false,
     confirmQuit: false,
     grouping: 'banner',
-    helpOpen: false
+    helpOpen: false,
+    undo: []
+  };
+
+  const pushUndo = (entry: UndoEntry) => {
+    state.undo.push(entry);
+    if (state.undo.length > UNDO_LIMIT) state.undo.shift();
   };
 
   // --- Layout ---
@@ -385,10 +406,44 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         return;
       }
       const idx = file.entries.indexOf(entry);
-      if (idx >= 0) file.entries.splice(idx, 1);
+      if (idx >= 0) {
+        pushUndo({ kind: 'delete-kv', file, entry, idx });
+        file.entries.splice(idx, 1);
+      }
       state.dirty.add(file);
       rebuildMatrix();
       state.message = `Deleted ${key} from ${basename(file.path)}. Ctrl-S to save.`;
+      refresh();
+    };
+
+    const undo = () => {
+      const last = state.undo.pop();
+      if (!last) {
+        state.message = 'Nothing to undo.';
+        refresh();
+        return;
+      }
+      switch (last.kind) {
+        case 'edit':
+          last.entry.value = last.prevValue;
+          last.entry.raw = last.prevRaw;
+          state.dirty.add(last.file);
+          state.message = `Undid edit on ${last.entry.key} in ${basename(last.file.path)}.`;
+          break;
+        case 'add-kv': {
+          const i = last.file.entries.indexOf(last.entry);
+          if (i >= 0) last.file.entries.splice(i, 1);
+          state.dirty.add(last.file);
+          state.message = `Undid add of ${last.entry.key} in ${basename(last.file.path)}.`;
+          break;
+        }
+        case 'delete-kv':
+          last.file.entries.splice(last.idx, 0, last.entry);
+          state.dirty.add(last.file);
+          state.message = `Undid delete of ${last.entry.key} in ${basename(last.file.path)}.`;
+          break;
+      }
+      rebuildMatrix();
       refresh();
     };
 
@@ -400,6 +455,13 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       if (p.kind === 'edit') {
         const entry = findKvEntry(p.file, p.key);
         if (entry) {
+          pushUndo({
+            kind: 'edit',
+            file: p.file,
+            entry,
+            prevValue: entry.value,
+            prevRaw: entry.raw
+          });
           entry.value = raw;
           rebuildKvLine(entry);
           state.dirty.add(p.file);
@@ -430,7 +492,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       }
 
       if (p.kind === 'add-value') {
-        appendKv(p.file, p.key, raw);
+        const added = appendKv(p.file, p.key, raw);
+        pushUndo({ kind: 'add-kv', file: p.file, entry: added });
         state.dirty.add(p.file);
         rebuildMatrix();
         focusKey(p.key);
@@ -544,6 +607,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       if (key.ctrl && key.name === 's') {
         state.confirmQuit = false;
         return void saveDirty();
+      }
+      if (key.ctrl && key.name === 'z') {
+        state.confirmQuit = false;
+        return undo();
       }
 
       const tryQuit = () => {
@@ -746,7 +813,7 @@ function refreshFooter(
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
       `↑↓←→ move · e edit · a add · d del · n new · ` +
-      `/ filter · ^S save · ? help · q quit${dirtyLabel}`;
+      `^Z undo · ^S save · / filter · ? help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
       `g group: ${state.grouping}`;
@@ -826,7 +893,7 @@ function createEmptyEnvFile(path: string): EnvFile {
   };
 }
 
-function appendKv(file: EnvFile, key: string, value: string): void {
+function appendKv(file: EnvFile, key: string, value: string): KvEntry {
   const entry: KvEntry = {
     kind: 'kv',
     key,
@@ -844,6 +911,7 @@ function appendKv(file: EnvFile, key: string, value: string): void {
   // trailingNewline=false, or "...\nKEY=val\n" when true. Either case is
   // sane; we make sure the file ends with a newline so editors don't complain.
   file.trailingNewline = true;
+  return entry;
 }
 
 function buildSectionDivider(
