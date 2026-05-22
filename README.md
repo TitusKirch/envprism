@@ -9,10 +9,13 @@
 ---
 
 ```bash
-npx envprism
+bunx envprism
 ```
 
 Point `envprism` at a directory containing `.env*` files and it opens a matrix view: rows are variable keys, columns are files. Differences light up, missing keys are obvious, and you can edit cells in place — with comments and ordering preserved on write-back.
+
+> [!IMPORTANT]
+> `envprism` runs on **[Bun](https://bun.sh/)** 1.3+. The TUI is powered by [opentui](https://opentui.com/), which links to a native Zig core via `bun:ffi`. Node has no equivalent built-in FFI, so `npx envprism` will not work — install Bun first.
 
 ## ✨ Features
 
@@ -25,22 +28,22 @@ Point `envprism` at a directory containing `.env*` files and it opens a matrix v
 
 ## 🚀 Setup
 
-Run without installing:
+Install Bun (one-time): see [bun.sh](https://bun.sh/).
+
+Run without installing envprism:
 
 ```bash
-npx envprism
-# or
-pnpm dlx envprism
+bunx envprism
 ```
 
 Or install globally:
 
 ```bash
-pnpm add -g envprism
+bun add -g envprism
 envprism
 ```
 
-Requirements: Node **24+**.
+Requirements: **Bun 1.3+**.
 
 ## 🤝 Contributing
 

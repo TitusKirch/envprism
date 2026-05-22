@@ -7,7 +7,7 @@ const nodeBuiltins = new Set([
   ...builtinModules.map((m) => `node:${m}`)
 ]);
 
-const runtimeDeps = ['citty', 'consola', 'pathe'];
+const runtimeDeps = ['citty', 'consola', 'pathe', '@opentui/core'];
 
 export default defineConfig({
   build: {
@@ -36,7 +36,9 @@ export default defineConfig({
         chunkFileNames: 'chunks/[name]-[hash].mjs',
         banner: (chunk) => {
           if (chunk.name === 'bin/envprism') {
-            return '#!/usr/bin/env node';
+            // Bun runtime is required because opentui's TUI uses bun:ffi
+            // to load its native Zig core. Node has no equivalent built-in.
+            return '#!/usr/bin/env bun';
           }
           return '';
         }

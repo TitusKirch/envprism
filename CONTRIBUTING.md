@@ -17,8 +17,11 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 Requirements:
 
-- Node **24+** and **pnpm 11**
-- `git`
+- **[Bun](https://bun.sh/) 1.3+** — required at runtime (opentui's TUI uses Bun's FFI). Version is pinned in `.bun-version`.
+- **pnpm 11** for dependency management.
+- `git`.
+
+Node is not required for development or use; it can still execute the built `diff` subcommand because that path doesn't touch opentui, but the TUI and the published binary are Bun-only.
 
 Clone and install:
 
@@ -30,12 +33,15 @@ pnpm install   # wires husky hooks
 
 ## Running the suite
 
-| Command          | What it does                              |
-| :--------------- | :---------------------------------------- |
-| `pnpm lint`      | oxlint across the repo.                   |
-| `pnpm format`    | oxfmt check across JS / JSON / YAML / MD. |
-| `pnpm check`     | Runs `lint` and `format`.                 |
-| `pnpm check:fix` | Auto-fix lint + format issues.            |
+| Command          | What it does                                   |
+| :--------------- | :--------------------------------------------- |
+| `pnpm build`     | Build via vite to `dist/`.                     |
+| `pnpm lint`      | oxlint across the repo.                        |
+| `pnpm format`    | oxfmt check across JS / TS / JSON / YAML / MD. |
+| `pnpm typecheck` | `tsc --noEmit` (strict).                       |
+| `pnpm test`      | Run the vitest unit suite.                     |
+| `pnpm check`     | Runs `lint`, `format`, and `typecheck`.        |
+| `pnpm check:fix` | Auto-fix lint + format issues.                 |
 
 The same commands run in CI — keep them green before you push.
 
