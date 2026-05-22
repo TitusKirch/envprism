@@ -4,6 +4,7 @@ import {
   createCliRenderer,
   InputRenderable,
   RGBA,
+  ScrollBoxRenderable,
   TextRenderable
 } from '@opentui/core';
 import { writeFile } from 'node:fs/promises';
@@ -47,8 +48,9 @@ const COLORS = {
 };
 
 const KEY_COL_WIDTH = 22;
-const VALUE_COL_MIN = 10;
+const VALUE_COL_MIN = 18;
 const SIDEBAR_WIDTH = 30;
+const ROW_GAP = 1;
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
@@ -106,6 +108,29 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     paddingX: 1
   });
   body.add(matrixBox);
+
+  // Header sits above the scrollable region so it doesn't scroll out of view.
+  const headerHost = new BoxRenderable(renderer, {
+    id: 'header-host',
+    flexDirection: 'column',
+    flexShrink: 0,
+    // Match the ScrollBox viewport padding so the header column boundaries
+    // line up with the data rows below.
+    paddingRight: 1
+  });
+  matrixBox.add(headerHost);
+
+  const scrollBox = new ScrollBoxRenderable(renderer, {
+    id: 'matrix-scroll',
+    flexGrow: 1,
+    scrollX: true,
+    scrollY: true,
+    // Reserve a column on the right so the vertical scrollbar doesn't sit on
+    // top of cell content, and a row at the bottom for the horizontal one.
+    viewportOptions: { paddingRight: 1, paddingBottom: 1 },
+    contentOptions: { flexDirection: 'column', rowGap: ROW_GAP }
+  });
+  matrixBox.add(scrollBox);
 
   const footer = new BoxRenderable(renderer, {
     id: 'footer',
@@ -168,18 +193,31 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
   const computeValueColWidth = (): number => {
     // Available width inside the matrix box (subtract sidebar, both borders
-    // and the matrix's horizontal padding).
+    // and the matrix's horizontal padding). If columns would have to shrink
+    // below VALUE_COL_MIN to fit the viewport, keep them at the minimum and
+    // let the ScrollBox handle the horizontal overflow.
     const available = Math.max(
-      40,
-      renderer.terminalWidth - SIDEBAR_WIDTH - 4 - KEY_COL_WIDTH
+      0,
+      renderer.terminalWidth - SIDEBAR_WIDTH - 6 - KEY_COL_WIDTH
     );
-    return Math.max(VALUE_COL_MIN, Math.floor(available / matrix.files.length));
+    const fair = matrix.files.length
+      ? Math.floor(available / matrix.files.length)
+      : VALUE_COL_MIN;
+    return Math.max(VALUE_COL_MIN, fair);
   };
 
   const refresh = () => {
     const valueColWidth = computeValueColWidth();
     refreshSidebar(sidebar, renderer, matrix, state);
-    refreshMatrix(matrixBox, renderer, matrix, state, valueColWidth);
+    refreshMatrix(
+      matrixBox,
+      headerHost,
+      scrollBox,
+      renderer,
+      matrix,
+      state,
+      valueColWidth
+    );
     refreshFooter(hint, status, promptLabel, filterInput, promptInput, state);
   };
 
@@ -492,15 +530,18 @@ function refreshSidebar(
 
 function refreshMatrix(
   matrixBox: BoxRenderable,
+  headerHost: BoxRenderable,
+  scrollBox: ScrollBoxRenderable,
   renderer: CliRenderer,
   matrix: Matrix,
   state: State,
   valueColWidth: number
 ): void {
   matrixBox.title = matrixTitle(matrix, state);
-  removeAllChildren(matrixBox);
+  removeAllChildren(headerHost);
+  removeAllChildren(scrollBox.content);
 
-  matrixBox.add(
+  headerHost.add(
     buildRow(renderer, 'header', [
       { text: 'KEY', fg: COLORS.fgHeader, width: KEY_COL_WIDTH },
       ...matrix.files.map((f) => ({
@@ -529,7 +570,17 @@ function refreshMatrix(
         bg: focused ? COLORS.focusBg : undefined
       });
     }
-    matrixBox.add(buildRow(renderer, `row-${r}`, cells));
+    scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
+  }
+
+  // Keep the focused row visible when navigating up/down past the viewport.
+  if (state.mode === 'browse' && state.visibleKeys.length > 0) {
+    try {
+      scrollBox.scrollChildIntoView(`row-${state.rowIdx}`);
+    } catch {
+      // scrollChildIntoView throws if the row id isn't laid out yet; the
+      // next refresh after layout will succeed.
+    }
   }
 }
 
