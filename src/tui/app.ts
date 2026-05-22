@@ -50,11 +50,12 @@ const COLORS = {
 const KEY_COL_WIDTH = 22;
 const VALUE_COL_MIN = 18;
 const SIDEBAR_WIDTH = 30;
-const ROW_GAP = 1;
+const ROW_GAP = 0;
+const CELL_PAD_X = 1;
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
-  const renderer = await createCliRenderer();
+  const renderer = await createCliRenderer({ useMouse: true });
   let matrix = initialMatrix;
 
   const state: State = {
@@ -689,14 +690,17 @@ function buildRow(
       id: `${idPrefix}-c${i}`,
       width: cell.width,
       height: 1,
-      flexShrink: 0
+      flexShrink: 0,
+      paddingX: CELL_PAD_X
     };
     if (cell.bg) cellOpts.backgroundColor = cell.bg;
     const cellBox = new BoxRenderable(renderer, cellOpts);
+    // Inner width = column width minus the left + right padding.
+    const innerWidth = Math.max(0, cell.width - CELL_PAD_X * 2);
     cellBox.add(
       new TextRenderable(renderer, {
         id: `${idPrefix}-c${i}-t`,
-        content: truncate(cell.text, cell.width),
+        content: truncate(cell.text, innerWidth),
         fg: cell.fg
       })
     );
