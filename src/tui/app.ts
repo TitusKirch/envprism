@@ -9,18 +9,23 @@ import {
 import { writeFile } from 'node:fs/promises';
 import { basename } from 'pathe';
 import { isSecretKey, maskValue } from '../core/mask.ts';
-import type { CellState, Matrix } from '../core/matrix.ts';
+import { buildMatrix, type CellState, type Matrix } from '../core/matrix.ts';
 import { rebuildKvLine, serializeEnv } from '../core/serialize.ts';
 import type { EnvFile, KvEntry } from '../core/types.ts';
 
-type Mode = 'browse' | 'filter' | 'edit';
+type Mode = 'browse' | 'filter' | 'prompt';
+
+type Prompt =
+  | { kind: 'edit'; key: string; file: EnvFile }
+  | { kind: 'add-key'; file: EnvFile }
+  | { kind: 'add-value'; key: string; file: EnvFile };
 
 interface State {
   mode: Mode;
   filter: string;
-  rowIdx: number; // index into visibleKeys
-  colIdx: number; // index into matrix.files (0 = first file)
-  editing: { key: string; file: EnvFile } | null;
+  rowIdx: number;
+  colIdx: number;
+  prompt: Prompt | null;
   dirty: Set<EnvFile>;
   visibleKeys: string[];
   message: string | null;
@@ -41,16 +46,18 @@ const COLORS = {
 
 const KEY_COL_WIDTH = 22;
 const VALUE_COL_WIDTH = 24;
+const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export async function runMatrixTui(matrix: Matrix): Promise<void> {
+export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer();
+  let matrix = initialMatrix;
 
   const state: State = {
     mode: 'browse',
     filter: '',
     rowIdx: 0,
     colIdx: 0,
-    editing: null,
+    prompt: null,
     dirty: new Set(),
     visibleKeys: matrix.keys.slice(),
     message: null
@@ -124,16 +131,14 @@ export async function runMatrixTui(matrix: Matrix): Promise<void> {
   });
   footer.add(filterInput);
 
-  const editInput = new InputRenderable(renderer, {
-    id: 'edit-input',
-    placeholder: 'New value (Enter saves, Esc cancels)',
+  const promptInput = new InputRenderable(renderer, {
+    id: 'prompt-input',
+    placeholder: '',
     width: 60
   });
-  footer.add(editInput);
+  footer.add(promptInput);
 
-  // Refs we mutate on focus/filter/edit changes.
-  const cellRefs: BoxRenderable[][] = [];
-
+  // --- State helpers ---
   const recomputeVisibleKeys = () => {
     state.visibleKeys = matrix.keys.filter((k) =>
       matchesFilter(k, state.filter)
@@ -143,10 +148,20 @@ export async function runMatrixTui(matrix: Matrix): Promise<void> {
     }
   };
 
+  const rebuildMatrix = () => {
+    matrix = buildMatrix(matrix.files, matrix.base);
+    recomputeVisibleKeys();
+  };
+
+  const focusKey = (key: string) => {
+    const idx = state.visibleKeys.indexOf(key);
+    if (idx >= 0) state.rowIdx = idx;
+  };
+
   const refresh = () => {
     refreshSidebar(sidebar, renderer, matrix, state);
-    refreshMatrix(matrixBox, renderer, matrix, state, cellRefs);
-    refreshFooter(hint, status, promptLabel, filterInput, editInput, state);
+    refreshMatrix(matrixBox, renderer, matrix, state);
+    refreshFooter(hint, status, promptLabel, filterInput, promptInput, state);
   };
 
   recomputeVisibleKeys();
@@ -160,48 +175,114 @@ export async function runMatrixTui(matrix: Matrix): Promise<void> {
       resolve();
     };
 
+    const openPrompt = (prompt: Prompt, value = '', placeholder = '') => {
+      state.prompt = prompt;
+      state.mode = 'prompt';
+      state.message = null;
+      promptInput.placeholder = placeholder;
+      promptInput.value = value;
+      promptInput.focus();
+      refresh();
+    };
+
+    const closePrompt = (msg: string | null = null) => {
+      promptInput.value = '';
+      promptInput.blur();
+      state.prompt = null;
+      state.mode = 'browse';
+      state.message = msg;
+      refresh();
+    };
+
     const startEdit = () => {
       const key = state.visibleKeys[state.rowIdx];
       const file = matrix.files[state.colIdx];
       if (!key || !file) return;
       const entry = findKvEntry(file, key);
       if (!entry) {
-        state.message = `Cannot edit "${key}" in ${basename(file.path)}: key is missing (add not yet supported).`;
+        state.message = `Cannot edit "${key}" in ${basename(file.path)}: missing. Press 'a' to add.`;
         refresh();
         return;
       }
-      state.editing = { key, file };
-      state.mode = 'edit';
-      state.message = null;
-      editInput.value = entry.value;
-      editInput.focus();
-      refresh();
+      openPrompt({ kind: 'edit', key, file }, entry.value, 'New value');
     };
 
-    const commitEdit = () => {
-      if (!state.editing) return;
-      const { key, file } = state.editing;
+    const startAdd = () => {
+      const file = matrix.files[state.colIdx];
+      if (!file) return;
+      openPrompt({ kind: 'add-key', file }, '', 'NEW_KEY');
+    };
+
+    const startDelete = () => {
+      const key = state.visibleKeys[state.rowIdx];
+      const file = matrix.files[state.colIdx];
+      if (!key || !file) return;
       const entry = findKvEntry(file, key);
-      if (entry) {
-        entry.value = editInput.value;
-        rebuildKvLine(entry);
-        state.dirty.add(file);
-        state.message = `Edited ${key} in ${basename(file.path)}. Press Ctrl-S to save.`;
+      if (!entry) {
+        state.message = `${key} is not present in ${basename(file.path)}.`;
+        refresh();
+        return;
       }
-      editInput.value = '';
-      editInput.blur();
-      state.editing = null;
-      state.mode = 'browse';
+      const idx = file.entries.indexOf(entry);
+      if (idx >= 0) file.entries.splice(idx, 1);
+      state.dirty.add(file);
+      rebuildMatrix();
+      state.message = `Deleted ${key} from ${basename(file.path)}. Ctrl-S to save.`;
       refresh();
     };
 
-    const cancelEdit = () => {
-      editInput.value = '';
-      editInput.blur();
-      state.editing = null;
-      state.mode = 'browse';
-      state.message = 'Edit cancelled.';
-      refresh();
+    const commitPrompt = () => {
+      if (!state.prompt) return;
+      const p = state.prompt;
+      const raw = promptInput.value;
+
+      if (p.kind === 'edit') {
+        const entry = findKvEntry(p.file, p.key);
+        if (entry) {
+          entry.value = raw;
+          rebuildKvLine(entry);
+          state.dirty.add(p.file);
+          rebuildMatrix();
+          closePrompt(
+            `Edited ${p.key} in ${basename(p.file.path)}. Ctrl-S to save.`
+          );
+        } else {
+          closePrompt(`Lost the entry for ${p.key} — try again.`);
+        }
+        return;
+      }
+
+      if (p.kind === 'add-key') {
+        const key = raw.trim();
+        if (!KEY_RE.test(key)) {
+          state.message = `Invalid key "${key}". Must match ${KEY_RE.source}.`;
+          refresh();
+          return;
+        }
+        if (findKvEntry(p.file, key)) {
+          state.message = `${key} already exists in ${basename(p.file.path)}. Use edit instead.`;
+          refresh();
+          return;
+        }
+        openPrompt({ kind: 'add-value', key, file: p.file }, '', 'value');
+        return;
+      }
+
+      if (p.kind === 'add-value') {
+        appendKv(p.file, p.key, raw);
+        state.dirty.add(p.file);
+        rebuildMatrix();
+        focusKey(p.key);
+        state.colIdx = matrix.files.indexOf(p.file);
+        closePrompt(
+          `Added ${p.key} to ${basename(p.file.path)}. Ctrl-S to save.`
+        );
+        return;
+      }
+    };
+
+    const cancelPrompt = () => {
+      closePrompt('Cancelled.');
     };
 
     const saveDirty = async () => {
@@ -235,9 +316,9 @@ export async function runMatrixTui(matrix: Matrix): Promise<void> {
       ctrl?: boolean;
       sequence?: string;
     }) => {
-      if (state.mode === 'edit') {
-        if (key.name === 'escape') cancelEdit();
-        else if (key.name === 'return') commitEdit();
+      if (state.mode === 'prompt') {
+        if (key.name === 'escape') cancelPrompt();
+        else if (key.name === 'return') commitPrompt();
         return;
       }
 
@@ -268,42 +349,34 @@ export async function runMatrixTui(matrix: Matrix): Promise<void> {
       }
 
       // Browse mode.
-      if (key.ctrl && key.name === 'c') {
-        cleanup();
-        return;
-      }
-      if (key.ctrl && key.name === 's') {
-        void saveDirty();
-        return;
-      }
+      if (key.ctrl && key.name === 'c') return cleanup();
+      if (key.ctrl && key.name === 's') return void saveDirty();
 
       switch (key.name) {
         case 'q':
-          cleanup();
-          return;
+          return cleanup();
         case 'up':
           state.rowIdx = Math.max(0, state.rowIdx - 1);
-          refresh();
-          return;
+          return refresh();
         case 'down':
           state.rowIdx = Math.min(
             Math.max(0, state.visibleKeys.length - 1),
             state.rowIdx + 1
           );
-          refresh();
-          return;
+          return refresh();
         case 'left':
           state.colIdx = Math.max(0, state.colIdx - 1);
-          refresh();
-          return;
+          return refresh();
         case 'right':
           state.colIdx = Math.min(matrix.files.length - 1, state.colIdx + 1);
-          refresh();
-          return;
+          return refresh();
         case 'e':
         case 'return':
-          startEdit();
-          return;
+          return startEdit();
+        case 'a':
+          return startAdd();
+        case 'd':
+          return startDelete();
       }
 
       if (key.sequence === '/' || key.name === 'slash') {
@@ -328,14 +401,16 @@ function refreshSidebar(
 ): void {
   sidebar.title = ` Files (${matrix.files.length}) `;
   removeAllChildren(sidebar);
-  for (const file of matrix.files) {
+  for (let i = 0; i < matrix.files.length; i++) {
+    const file = matrix.files[i]!;
     const isBase = file === matrix.base;
     const isDirty = state.dirty.has(file);
-    const marker = `${isDirty ? '●' : ' '}${isBase ? '★' : ' '} `;
+    const isFocusCol = i === state.colIdx;
+    const marker = `${isDirty ? '●' : ' '}${isBase ? '★' : ' '}${isFocusCol ? '▸' : ' '}`;
     sidebar.add(
       new TextRenderable(renderer, {
         id: `file-${file.path}`,
-        content: `${marker}${basename(file.path)}`,
+        content: `${marker} ${basename(file.path)}`,
         fg: isDirty ? COLORS.fgDirty : isBase ? COLORS.fgBase : COLORS.fg
       })
     );
@@ -346,14 +421,11 @@ function refreshMatrix(
   matrixBox: BoxRenderable,
   renderer: CliRenderer,
   matrix: Matrix,
-  state: State,
-  cellRefs: BoxRenderable[][]
+  state: State
 ): void {
   matrixBox.title = matrixTitle(matrix, state);
   removeAllChildren(matrixBox);
-  cellRefs.length = 0;
 
-  // Header row.
   matrixBox.add(
     buildRow(renderer, 'header', [
       { text: 'KEY', fg: COLORS.fgHeader, width: KEY_COL_WIDTH },
@@ -365,29 +437,25 @@ function refreshMatrix(
     ])
   );
 
-  // Data rows.
   for (let r = 0; r < state.visibleKeys.length; r++) {
     const key = state.visibleKeys[r]!;
     const secret = isSecretKey(key);
-    const rowCells: { text: string; fg: RGBA; width: number; bg?: RGBA }[] = [
+    const cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[] = [
       { text: key, fg: COLORS.fg, width: KEY_COL_WIDTH }
     ];
     for (let c = 0; c < matrix.files.length; c++) {
       const file = matrix.files[c]!;
       const cell = matrix.cell(key, file);
       const focused =
-        state.mode !== 'filter' && r === state.rowIdx && c === state.colIdx;
-      rowCells.push({
+        state.mode === 'browse' && r === state.rowIdx && c === state.colIdx;
+      cells.push({
         text: renderCellText(cell.state, cell.value, secret),
         fg: stateColor(cell.state),
         width: VALUE_COL_WIDTH,
         bg: focused ? COLORS.focusBg : undefined
       });
     }
-    const rowRefs: BoxRenderable[] = [];
-    const rowBox = buildRow(renderer, `row-${r}`, rowCells, rowRefs);
-    matrixBox.add(rowBox);
-    cellRefs.push(rowRefs);
+    matrixBox.add(buildRow(renderer, `row-${r}`, cells));
   }
 }
 
@@ -396,36 +464,66 @@ function refreshFooter(
   status: TextRenderable,
   promptLabel: TextRenderable,
   filterInput: InputRenderable,
-  editInput: InputRenderable,
+  promptInput: InputRenderable,
   state: State
 ): void {
   const dirty = state.dirty.size;
   const dirtyLabel = dirty > 0 ? `  ●${dirty} unsaved` : '';
-  if (state.mode === 'edit' && state.editing) {
-    hint.content = `[Enter] save   [Esc] cancel${dirtyLabel}`;
-    promptLabel.content = ` Edit ${state.editing.key} in ${basename(state.editing.file.path)}:`;
+
+  if (state.mode === 'prompt' && state.prompt) {
+    hint.content = `[Enter] confirm   [Esc] cancel${dirtyLabel}`;
+    promptLabel.content = promptLabelText(state.prompt);
   } else if (state.mode === 'filter') {
     hint.content = `[Enter] keep filter   [Esc] clear${dirtyLabel}`;
     promptLabel.content = ' Filter:';
   } else {
-    hint.content = `[↑↓←→] move  [e/Enter] edit  [/] filter  [Ctrl-S] save  [q] quit${dirtyLabel}`;
+    hint.content =
+      `[↑↓←→] move  [e] edit  [a] add  [d] del  [/] filter  ` +
+      `[Ctrl-S] save  [q] quit${dirtyLabel}`;
     promptLabel.content = '';
   }
-  // Hide the inactive input by setting its height to 0; opentui has no easy
-  // `visible` toggle here, but width=0 is a workable approximation that keeps
-  // the layout stable.
   filterInput.width = state.mode === 'filter' ? 40 : 0;
-  editInput.width = state.mode === 'edit' ? 60 : 0;
+  promptInput.width = state.mode === 'prompt' ? 60 : 0;
   status.content = state.message ?? '';
+}
+
+function promptLabelText(p: Prompt): string {
+  switch (p.kind) {
+    case 'edit':
+      return ` Edit ${p.key} in ${basename(p.file.path)}:`;
+    case 'add-key':
+      return ` Add new key to ${basename(p.file.path)}:`;
+    case 'add-value':
+      return ` Value for ${p.key} in ${basename(p.file.path)}:`;
+  }
 }
 
 // --- Helpers ---
 
+function appendKv(file: EnvFile, key: string, value: string): void {
+  const entry: KvEntry = {
+    kind: 'kv',
+    key,
+    rawValue: '',
+    value,
+    quoting: 'none',
+    exportPrefix: false,
+    inlineComment: '',
+    raw: ''
+  };
+  rebuildKvLine(entry);
+  file.entries.push(entry);
+  // Round-trip semantics: serializeEnv joins with \n and appends a trailing
+  // newline if trailingNewline is set. Push alone gives us "...\nKEY=val" when
+  // trailingNewline=false, or "...\nKEY=val\n" when true. Either case is
+  // sane; we make sure the file ends with a newline so editors don't complain.
+  file.trailingNewline = true;
+}
+
 function buildRow(
   renderer: CliRenderer,
   idPrefix: string,
-  cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[],
-  outRefs?: BoxRenderable[]
+  cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[]
 ): BoxRenderable {
   const row = new BoxRenderable(renderer, {
     id: idPrefix,
@@ -445,7 +543,6 @@ function buildRow(
       })
     );
     row.add(cellBox);
-    if (outRefs && i > 0) outRefs.push(cellBox);
   });
   return row;
 }
@@ -466,14 +563,14 @@ function matrixTitle(matrix: Matrix, state: State): string {
 }
 
 function renderCellText(
-  state: CellState,
+  cellState: CellState,
   value: string | undefined,
   secret: boolean
 ): string {
-  if (state === 'missing') return '✗ missing';
-  if (state === 'extra') return `★ ${formatValue(value, secret)}`;
+  if (cellState === 'missing') return '✗ missing';
+  if (cellState === 'extra') return `★ ${formatValue(value, secret)}`;
   if (value === undefined) return '';
-  if (state === 'differs') return `≠ ${formatValue(value, secret)}`;
+  if (cellState === 'differs') return `≠ ${formatValue(value, secret)}`;
   return formatValue(value, secret);
 }
 
@@ -483,8 +580,8 @@ function formatValue(value: string | undefined, secret: boolean): string {
   return value;
 }
 
-function stateColor(state: CellState): RGBA {
-  switch (state) {
+function stateColor(cellState: CellState): RGBA {
+  switch (cellState) {
     case 'differs':
       return COLORS.differs;
     case 'missing':
