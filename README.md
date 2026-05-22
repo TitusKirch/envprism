@@ -21,10 +21,62 @@ Point `envprism` at a directory containing `.env*` files and it opens a matrix v
 
 - **🔍 Auto-discovery** — finds every `.env*` file in the current directory (or in `--paths a b c`).
 - **🧮 Matrix view** — rows = union of all variable keys, columns = files. The prism metaphor, literal.
-- **🎨 Diff highlights** — cells that differ from the leftmost column are coloured; missing keys are marked.
-- **✏️ Inline edit** — `enter` on a cell opens an editor; writes preserve comments and key order in the original file.
-- **🙈 Secret masking** — likely-secret values are masked by default; toggle per row.
-- **🔎 Filter & search** — `/` filters rows by key substring.
+- **🎨 Diff highlights** — `≠ differs` (yellow), `✗ missing` (red), `★ extra` (purple), in-sync (neutral).
+- **✏️ Inline edit** — `e` or `Enter` on a cell opens an editor; writes preserve comments, blank lines, and key order in the original file.
+- **➕ Add / delete / new file** — `a` adds a variable to the focused file, `d` removes it, `n` scaffolds a new `.env.*` next to the base.
+- **↩️ Undo** — `Ctrl-Z` walks back the last 50 edits.
+- **🙈 Secret masking** — keys with `TOKEN`, `SECRET`, `PASSWORD`, `KEY`, `PRIVATE`, … render as `•••• (N)` so values don't appear over your shoulder.
+- **📂 Grouping** — comment banners like `# === Database ===` become section dividers in the TUI; `g` toggles to grouping by key prefix (`APP_*`, `DB_*`, `FEATURE_*`).
+- **🔎 Filter & view** — `/` filters keys live; `v` toggles to a drift-only view that hides keys already in sync.
+- **🧪 CI mode** — `envprism diff` prints a text or JSON drift report; `--check` exits non-zero when any file diverges.
+
+## 📺 What it looks like
+
+```
+╭─ Files (4) ────────────────╮╭─ Matrix · 31 keys ─────────────────────────────╮
+│  ★▸ .env.example           ││  KEY                   .env.example      .env  │
+│     .env                   ││  ─────────────── Application ───────────────── │
+│     .env.production        ││  APP_NAME              envprism          envpr │
+│     .env.staging           ││  APP_ENV               development       devel │
+│                            ││  APP_URL               http://localhos…  ≠ htt │
+│                            ││  PORT                  3000              ≠ 300 │
+│                            ││  LOG_LEVEL             info              ≠ deb │
+│                            ││  TZ                    UTC               ≠ Eur │
+│                            ││  ─────────────── Database ──────────────────── │
+│                            ││  DATABASE_URL          postgres://loca…  ≠ pos │
+│                            ││  DATABASE_POOL_SIZE    10                ≠ 5   │
+│                            ││  DATABASE_SSL          false             false │
+│                            ││  REDIS_URL             redis://localho…  redis │
+│                            ││  REDIS_DB              0                 ≠ 1   │
+│                            ││  ───────── Auth / Secrets — fill in… ───────── │
+│                            ││  SECRET_KEY            ••••              ≠ ••• │
+│                            ││  API_TOKEN             ••••              ≠ ••• │
+│                            ││  JWT_PRIVATE_KEY       ••••              ≠ ••• │
+╰────────────────────────────╯╰────────────────────────────────────────────────╯
+ ↑↓←→ move · e edit · a add · d del · n new · ^Z undo · ^S save · / filter · ? help · q quit
+ v view: all · g group: banner
+```
+
+`envprism diff` (non-interactive, CI-friendly):
+
+```text
+$ envprism diff examples/
+Base: .env.example  (vs. .env, .env.production, .env.staging)
+
+KEY                  .env             .env.production  .env.staging
+API_TOKEN            ≠ differs        ≠ differs        ≠ differs
+DEBUG                ★ extra          ✗ missing        ✗ missing
+FEATURE_NEW_UI       ≠ differs        ✗ missing        ≠ differs
+PORT                 ≠ differs        — same           — same
+…
+
+8 key(s) differ across 3 file(s) (21 cell drift).
+```
+
+```bash
+envprism diff --json | jq          # structured drift report
+envprism diff --check; echo $?     # 1 if any file drifts, 0 otherwise
+```
 
 ## 🚀 Setup
 
@@ -33,7 +85,9 @@ Install Bun (one-time): see [bun.sh](https://bun.sh/).
 Run without installing envprism:
 
 ```bash
-bunx envprism
+bunx envprism                      # TUI in the current directory
+bunx envprism tui path/to/repo     # TUI scanning another directory
+bunx envprism diff path/to/repo    # non-interactive drift report
 ```
 
 Or install globally:
