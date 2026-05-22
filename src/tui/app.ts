@@ -638,11 +638,11 @@ function refreshFooter(
     hint.content = `[Enter] keep filter   [Esc] clear${dirtyLabel}`;
     promptLabel.content = ' Filter:';
   } else {
-    const viewLabel = state.driftOnly ? ' [diff]' : '';
-    const groupLabel = state.grouping === 'prefix' ? ' [prefix]' : '';
+    const viewLabel = state.driftOnly ? 'drift' : 'all';
+    const groupLabel = state.grouping;
     hint.content =
       `[↑↓←→] move  [e] edit  [a] add  [d] del  [n] new  ` +
-      `[v] view${viewLabel}  [g] group${groupLabel}  ` +
+      `[v] view: ${viewLabel}  [g] group: ${groupLabel}  ` +
       `[/] filter  [Ctrl-S] save  [q] quit${dirtyLabel}`;
     promptLabel.content = '';
   }
