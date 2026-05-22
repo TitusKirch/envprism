@@ -1,32 +1,33 @@
 {
   "$schema": "https://www.schemastore.org/package.json",
-  "name": "scaffold",
+  "name": "envprism",
   "version": "0.0.0",
-  "description": "Language-agnostic baseline template for new kirchDev repositories.",
+  "description": "TUI-based env file manager — refract one set of variables into many environment views.",
   "keywords": [
-    "template",
-    "github-template",
-    "scaffold",
-    "kirchdev",
-    "pnpm",
-    "oxlint",
-    "oxfmt",
-    "husky",
+    "cli",
     "commitlint",
     "conventional-commits",
-    "release-please",
     "dependabot",
-    "nodejs"
+    "dotenv",
+    "env",
+    "husky",
+    "kirchdev",
+    "nodejs",
+    "oxfmt",
+    "oxlint",
+    "pnpm",
+    "release-please",
+    "tui"
   ],
-  "homepage": "https://github.com/TitusKirch/scaffold#readme",
+  "homepage": "https://github.com/TitusKirch/envprism#readme",
   "bugs": {
-    "url": "https://github.com/TitusKirch/scaffold/issues"
+    "url": "https://github.com/TitusKirch/envprism/issues"
   },
   "license": "MIT",
   "author": "Titus Kirch <titus.kirch@kirch.dev>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TitusKirch/scaffold.git"
+    "url": "git+https://github.com/TitusKirch/envprism.git"
   },
   "type": "module",
   "scripts": {

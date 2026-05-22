@@ -7,7 +7,7 @@
   "bump-patch-for-minor-pre-major": false,
   "packages": {
     ".": {
-      "package-name": "scaffold",
+      "package-name": "envprism",
       "changelog-path": "CHANGELOG.md"
     }
   }
