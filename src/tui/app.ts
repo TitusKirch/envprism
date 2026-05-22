@@ -7,7 +7,7 @@ import {
   TextRenderable
 } from '@opentui/core';
 import { writeFile } from 'node:fs/promises';
-import { basename } from 'pathe';
+import { basename, dirname, join } from 'pathe';
 import { isSecretKey, maskValue } from '../core/mask.ts';
 import { buildMatrix, type CellState, type Matrix } from '../core/matrix.ts';
 import { rebuildKvLine, serializeEnv } from '../core/serialize.ts';
@@ -18,7 +18,8 @@ type Mode = 'browse' | 'filter' | 'prompt';
 type Prompt =
   | { kind: 'edit'; key: string; file: EnvFile }
   | { kind: 'add-key'; file: EnvFile }
-  | { kind: 'add-value'; key: string; file: EnvFile };
+  | { kind: 'add-value'; key: string; file: EnvFile }
+  | { kind: 'new-file' };
 
 interface State {
   mode: Mode;
@@ -213,6 +214,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       openPrompt({ kind: 'add-key', file }, '', 'NEW_KEY');
     };
 
+    const startNewFile = () => {
+      openPrompt({ kind: 'new-file' }, '', '.env.local');
+    };
+
     const startDelete = () => {
       const key = state.visibleKeys[state.rowIdx];
       const file = matrix.files[state.colIdx];
@@ -277,6 +282,28 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         closePrompt(
           `Added ${p.key} to ${basename(p.file.path)}. Ctrl-S to save.`
         );
+        return;
+      }
+
+      if (p.kind === 'new-file') {
+        const name = raw.trim();
+        if (!isValidEnvFileName(name)) {
+          state.message = `"${name}" is not a valid .env* filename.`;
+          refresh();
+          return;
+        }
+        const newPath = join(dirname(matrix.base.path), name);
+        if (matrix.files.some((f) => f.path === newPath)) {
+          state.message = `${name} already exists.`;
+          refresh();
+          return;
+        }
+        const newFile = createEmptyEnvFile(newPath);
+        matrix.files.push(newFile);
+        state.dirty.add(newFile);
+        rebuildMatrix();
+        state.colIdx = matrix.files.indexOf(newFile);
+        closePrompt(`Created ${name}. Ctrl-S to write to disk.`);
         return;
       }
     };
@@ -377,6 +404,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           return startAdd();
         case 'd':
           return startDelete();
+        case 'n':
+          return startNewFile();
       }
 
       if (key.sequence === '/' || key.name === 'slash') {
@@ -478,7 +507,7 @@ function refreshFooter(
     promptLabel.content = ' Filter:';
   } else {
     hint.content =
-      `[↑↓←→] move  [e] edit  [a] add  [d] del  [/] filter  ` +
+      `[↑↓←→] move  [e] edit  [a] add  [d] del  [n] new file  [/] filter  ` +
       `[Ctrl-S] save  [q] quit${dirtyLabel}`;
     promptLabel.content = '';
   }
@@ -495,10 +524,28 @@ function promptLabelText(p: Prompt): string {
       return ` Add new key to ${basename(p.file.path)}:`;
     case 'add-value':
       return ` Value for ${p.key} in ${basename(p.file.path)}:`;
+    case 'new-file':
+      return ' New env file name (e.g. .env.local):';
   }
 }
 
 // --- Helpers ---
+
+function isValidEnvFileName(name: string): boolean {
+  if (!name.startsWith('.env')) return false;
+  if (name.includes('/') || name.includes('\\')) return false;
+  if (name.endsWith('.swp') || name.endsWith('~') || name.endsWith('.bak'))
+    return false;
+  return true;
+}
+
+function createEmptyEnvFile(path: string): EnvFile {
+  return {
+    path,
+    entries: [{ kind: 'comment', raw: `# ${basename(path)}` }],
+    trailingNewline: true
+  };
+}
 
 function appendKv(file: EnvFile, key: string, value: string): void {
   const entry: KvEntry = {
