@@ -227,14 +227,6 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   footer.add(status);
 
-  const promptLabel = new TextRenderable(renderer, {
-    id: 'prompt-label',
-    content: '',
-    wrapMode: 'none',
-    height: 1
-  });
-  footer.add(promptLabel);
-
   const filterInput = new InputRenderable(renderer, {
     id: 'filter-input',
     placeholder: 'Filter keys…',
@@ -242,12 +234,38 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   footer.add(filterInput);
 
+  // --- Prompt modal (used for edit / add / new-file) ---
+  const promptBox = new BoxRenderable(renderer, {
+    id: 'prompt-box',
+    position: 'absolute',
+    top: '35%',
+    left: '15%',
+    right: '15%',
+    height: 7,
+    zIndex: 50,
+    border: true,
+    borderStyle: 'rounded',
+    title: '',
+    paddingX: 2,
+    paddingY: 1,
+    visible: false,
+    backgroundColor: RGBA.fromHex('#1a1a1a'),
+    flexDirection: 'column'
+  });
   const promptInput = new InputRenderable(renderer, {
     id: 'prompt-input',
-    placeholder: '',
-    width: 60
+    placeholder: ''
   });
-  footer.add(promptInput);
+  const promptHint = new TextRenderable(renderer, {
+    id: 'prompt-hint',
+    content: 'Enter · confirm    Esc · cancel',
+    fg: COLORS.fgDim,
+    height: 1,
+    marginTop: 1
+  });
+  promptBox.add(promptInput);
+  promptBox.add(promptHint);
+  renderer.root.add(promptBox);
 
   // Floating help overlay. Hidden until '?' opens it.
   const helpBox = new BoxRenderable(renderer, {
@@ -330,15 +348,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       valueColWidth,
       sectionOf
     );
-    refreshFooter(
-      hintA,
-      hintB,
-      status,
-      promptLabel,
-      filterInput,
-      promptInput,
-      state
-    );
+    refreshFooter(hintA, hintB, status, filterInput, state);
+    refreshPrompt(promptBox, promptInput, state);
     helpBox.visible = state.helpOpen;
   };
 
@@ -359,13 +370,14 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       state.message = null;
       promptInput.placeholder = placeholder;
       promptInput.value = value;
-      promptInput.focus();
+      // Make the modal visible first so focus() targets a rendered input.
       refresh();
+      promptInput.focus();
     };
 
     const closePrompt = (msg: string | null = null) => {
-      promptInput.value = '';
       promptInput.blur();
+      promptInput.value = '';
       state.prompt = null;
       state.mode = 'browse';
       state.message = msg;
@@ -793,22 +805,20 @@ function refreshFooter(
   hintA: TextRenderable,
   hintB: TextRenderable,
   status: TextRenderable,
-  promptLabel: TextRenderable,
   filterInput: InputRenderable,
-  promptInput: InputRenderable,
   state: State
 ): void {
   const dirty = state.dirty.size;
   const dirtyLabel = dirty > 0 ? `  ●${dirty} unsaved` : '';
 
-  if (state.mode === 'prompt' && state.prompt) {
-    hintA.content = `[Enter] confirm   [Esc] cancel${dirtyLabel}`;
-    hintB.content = '';
-    promptLabel.content = promptLabelText(state.prompt);
-  } else if (state.mode === 'filter') {
+  if (state.mode === 'filter') {
     hintA.content = `[Enter] keep filter   [Esc] clear${dirtyLabel}`;
+    hintB.content = ' Filter:';
+  } else if (state.mode === 'prompt') {
+    // Hints are shown inside the modal; collapse the footer hints so the
+    // user's attention stays on the popup.
+    hintA.content = '';
     hintB.content = '';
-    promptLabel.content = ' Filter:';
   } else {
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
@@ -817,11 +827,22 @@ function refreshFooter(
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
       `g group: ${state.grouping}`;
-    promptLabel.content = '';
   }
   filterInput.visible = state.mode === 'filter';
-  promptInput.visible = state.mode === 'prompt';
   status.content = state.message ?? '';
+}
+
+function refreshPrompt(
+  promptBox: BoxRenderable,
+  promptInput: InputRenderable,
+  state: State
+): void {
+  const open = state.mode === 'prompt' && state.prompt !== null;
+  promptBox.visible = open;
+  promptInput.visible = open;
+  if (open && state.prompt) {
+    promptBox.title = promptLabelText(state.prompt);
+  }
 }
 
 function promptLabelText(p: Prompt): string {
@@ -1003,10 +1024,14 @@ function renderCellText(
   secret: boolean
 ): string {
   if (cellState === 'missing') return '✗ missing';
-  if (cellState === 'extra') return `★ ${formatValue(value, secret)}`;
   if (value === undefined) return '';
-  if (cellState === 'differs') return `≠ ${formatValue(value, secret)}`;
-  return formatValue(value, secret);
+  // Show "—" for present-but-empty values so the key is visually identifiable
+  // (without it the cell looks identical to a missing one). Secret-flagged
+  // empties already render as •••• via formatValue.
+  const formatted = formatValue(value, secret) || '—';
+  if (cellState === 'extra') return `★ ${formatted}`;
+  if (cellState === 'differs') return `≠ ${formatted}`;
+  return formatted;
 }
 
 function formatValue(value: string | undefined, secret: boolean): string {
