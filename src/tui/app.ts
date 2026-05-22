@@ -43,12 +43,12 @@ const COLORS = {
   differs: RGBA.fromHex('#ffd866'),
   missing: RGBA.fromHex('#ff6b6b'),
   extra: RGBA.fromHex('#c792ea'),
-  focusBg: RGBA.fromHex('#3a3f4b'),
-  defaultBg: RGBA.fromHex('#000000')
+  focusBg: RGBA.fromHex('#3a3f4b')
 };
 
 const KEY_COL_WIDTH = 22;
-const VALUE_COL_WIDTH = 24;
+const VALUE_COL_MIN = 10;
+const SIDEBAR_WIDTH = 30;
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
@@ -90,7 +90,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     borderStyle: 'rounded',
     title: '',
     flexDirection: 'column',
-    width: 30,
+    width: SIDEBAR_WIDTH,
+    flexShrink: 0,
     paddingX: 1
   });
   body.add(sidebar);
@@ -165,9 +166,20 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     if (idx >= 0) state.rowIdx = idx;
   };
 
+  const computeValueColWidth = (): number => {
+    // Available width inside the matrix box (subtract sidebar, both borders
+    // and the matrix's horizontal padding).
+    const available = Math.max(
+      40,
+      renderer.terminalWidth - SIDEBAR_WIDTH - 4 - KEY_COL_WIDTH
+    );
+    return Math.max(VALUE_COL_MIN, Math.floor(available / matrix.files.length));
+  };
+
   const refresh = () => {
+    const valueColWidth = computeValueColWidth();
     refreshSidebar(sidebar, renderer, matrix, state);
-    refreshMatrix(matrixBox, renderer, matrix, state);
+    refreshMatrix(matrixBox, renderer, matrix, state, valueColWidth);
     refreshFooter(hint, status, promptLabel, filterInput, promptInput, state);
   };
 
@@ -448,6 +460,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     };
 
     renderer.keyInput.on('keypress', onKey);
+    renderer.on('resize', refresh);
   });
 }
 
@@ -481,7 +494,8 @@ function refreshMatrix(
   matrixBox: BoxRenderable,
   renderer: CliRenderer,
   matrix: Matrix,
-  state: State
+  state: State,
+  valueColWidth: number
 ): void {
   matrixBox.title = matrixTitle(matrix, state);
   removeAllChildren(matrixBox);
@@ -492,7 +506,7 @@ function refreshMatrix(
       ...matrix.files.map((f) => ({
         text: basename(f.path),
         fg: COLORS.fgHeader,
-        width: VALUE_COL_WIDTH
+        width: valueColWidth
       }))
     ])
   );
@@ -511,7 +525,7 @@ function refreshMatrix(
       cells.push({
         text: renderCellText(cell.state, cell.value, secret),
         fg: stateColor(cell.state),
-        width: VALUE_COL_WIDTH,
+        width: valueColWidth,
         bg: focused ? COLORS.focusBg : undefined
       });
     }
@@ -615,14 +629,19 @@ function buildRow(
 ): BoxRenderable {
   const row = new BoxRenderable(renderer, {
     id: idPrefix,
-    flexDirection: 'row'
+    flexDirection: 'row',
+    flexShrink: 0,
+    height: 1
   });
   cells.forEach((cell, i) => {
-    const cellBox = new BoxRenderable(renderer, {
+    const cellOpts: ConstructorParameters<typeof BoxRenderable>[1] = {
       id: `${idPrefix}-c${i}`,
       width: cell.width,
-      backgroundColor: cell.bg ?? COLORS.defaultBg
-    });
+      height: 1,
+      flexShrink: 0
+    };
+    if (cell.bg) cellOpts.backgroundColor = cell.bg;
+    const cellBox = new BoxRenderable(renderer, cellOpts);
     cellBox.add(
       new TextRenderable(renderer, {
         id: `${idPrefix}-c${i}-t`,
