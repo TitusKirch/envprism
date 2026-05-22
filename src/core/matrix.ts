@@ -1,3 +1,4 @@
+import { computeSections } from './sections.ts';
 import type { EnvFile, KvEntry } from './types.ts';
 
 export type CellState = 'same' | 'differs' | 'missing' | 'extra' | 'base';
@@ -15,6 +16,12 @@ export interface Matrix {
   files: EnvFile[];
   base: EnvFile;
   cell(key: string, file: EnvFile): Cell;
+  /**
+   * Section name inferred from the base file's comment banners, or
+   * `undefined` for keys outside any section (and for keys only present in
+   * non-base files).
+   */
+  sectionOf(key: string): string | undefined;
 }
 
 export function buildMatrix(files: EnvFile[], base: EnvFile): Matrix {
@@ -27,11 +34,15 @@ export function buildMatrix(files: EnvFile[], base: EnvFile): Matrix {
   if (!baseIndex) {
     throw new Error('base file is not in the files list');
   }
+  const sections = computeSections(base);
 
   return {
     keys,
     files,
     base,
+    sectionOf(key) {
+      return sections.get(key);
+    },
     cell(key, file) {
       const ownIndex = lookups.get(file);
       if (!ownIndex) {

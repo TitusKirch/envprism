@@ -41,6 +41,7 @@ const COLORS = {
   fgHeader: RGBA.fromHex('#ffffff'),
   fgBase: RGBA.fromHex('#ffd866'),
   fgDirty: RGBA.fromHex('#56b6c2'),
+  fgSection: RGBA.fromHex('#82aaff'),
   differs: RGBA.fromHex('#ffd866'),
   missing: RGBA.fromHex('#ff6b6b'),
   extra: RGBA.fromHex('#c792ea'),
@@ -553,8 +554,17 @@ function refreshMatrix(
     ])
   );
 
+  let lastSection: string | undefined;
   for (let r = 0; r < state.visibleKeys.length; r++) {
     const key = state.visibleKeys[r]!;
+    const section = matrix.sectionOf(key);
+    if (section !== lastSection) {
+      const totalWidth = KEY_COL_WIDTH + valueColWidth * matrix.files.length;
+      scrollBox.content.add(
+        buildSectionDivider(renderer, `section-${r}`, section, totalWidth)
+      );
+      lastSection = section;
+    }
     const secret = isSecretKey(key);
     const cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[] = [
       { text: key, fg: COLORS.fg, width: KEY_COL_WIDTH }
@@ -672,6 +682,38 @@ function appendKv(file: EnvFile, key: string, value: string): void {
   // trailingNewline=false, or "...\nKEY=val\n" when true. Either case is
   // sane; we make sure the file ends with a newline so editors don't complain.
   file.trailingNewline = true;
+}
+
+function buildSectionDivider(
+  renderer: CliRenderer,
+  id: string,
+  name: string | undefined,
+  width: number
+): BoxRenderable {
+  // A single-line banner that spans the full matrix width. When `name` is
+  // undefined the divider is just a horizontal rule (separates extras /
+  // unsectioned keys from the previous group).
+  const label = name ? ` ${name} ` : '';
+  const rule = '─';
+  const visible = Math.max(0, width - 2);
+  const beforeLen = Math.max(2, Math.floor((visible - label.length) / 2));
+  const afterLen = Math.max(0, visible - beforeLen - label.length);
+  const content = rule.repeat(beforeLen) + label + rule.repeat(afterLen);
+  const box = new BoxRenderable(renderer, {
+    id,
+    flexDirection: 'row',
+    flexShrink: 0,
+    height: 1,
+    paddingX: 1
+  });
+  box.add(
+    new TextRenderable(renderer, {
+      id: `${id}-text`,
+      content,
+      fg: COLORS.fgSection
+    })
+  );
+  return box;
 }
 
 function buildRow(
