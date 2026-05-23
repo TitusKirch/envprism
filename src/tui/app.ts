@@ -1031,7 +1031,11 @@ function refreshMatrix(
     const sectionKey = section ?? '__other__';
     if (!seenSection.has(sectionKey)) {
       seenSection.add(sectionKey);
-      const meta = sectionStats.get(sectionKey) ?? { drift: 0, total: 0 };
+      const meta = sectionStats.get(sectionKey) ?? {
+        drift: 0,
+        missing: 0,
+        total: 0
+      };
       scrollBox.content.add(
         buildSectionDivider(
           renderer,
@@ -1039,8 +1043,7 @@ function refreshMatrix(
           section,
           totalWidth,
           {
-            drift: meta.drift,
-            total: meta.total,
+            ...meta,
             collapsed: state.collapsed.has(sectionKey)
           }
         )
@@ -1257,17 +1260,32 @@ function orderedKeys(
   return state.grouping === 'prefix' ? groupByPrefix(filtered) : filtered;
 }
 
+interface SectionStats {
+  drift: number;
+  missing: number;
+  total: number;
+}
+
 function sectionMetadata(
   matrix: Matrix,
   sectionOf: (key: string) => string | undefined,
   state: State
-): Map<string, { drift: number; total: number }> {
-  const out = new Map<string, { drift: number; total: number }>();
+): Map<string, SectionStats> {
+  const out = new Map<string, SectionStats>();
   for (const key of orderedKeys(matrix, state, sectionOf)) {
     const k = sectionOf(key) ?? '__other__';
-    const bucket = out.get(k) ?? { drift: 0, total: 0 };
+    const bucket = out.get(k) ?? { drift: 0, missing: 0, total: 0 };
     bucket.total += 1;
-    if (keyDrifts(matrix, key)) bucket.drift += 1;
+    let drifts = false;
+    let missing = false;
+    for (const file of matrix.files) {
+      if (file === matrix.base) continue;
+      const s = matrix.cell(key, file).state;
+      if (s === 'missing') missing = true;
+      if (s === 'differs' || s === 'missing' || s === 'extra') drifts = true;
+    }
+    if (drifts) bucket.drift += 1;
+    if (missing) bucket.missing += 1;
     out.set(k, bucket);
   }
   return out;
@@ -1378,22 +1396,41 @@ function buildSectionDivider(
   id: string,
   name: string | undefined,
   width: number,
-  meta: { drift: number; total: number; collapsed: boolean }
+  meta: SectionStats & { collapsed: boolean }
 ): BoxRenderable {
-  // A single-line banner that spans the full matrix width. When the section
-  // is unnamed (e.g. keys without a comment banner or no underscore prefix),
-  // label it explicitly so the user sees it as a deliberate group rather
-  // than a stray rule.
+  // Multi-segment divider so colours can encode meaning:
+  //   gray ───   blue ▾ Name   dim · stats   gray ───
+  // Drift counts go yellow; if any key in the section is missing in any
+  // non-base file we surface that explicitly in red ("✗ N missing"), even
+  // when the section also has plain differs.
   const baseName = name ?? '(other)';
   const indicator = meta.collapsed ? '▸' : '▾';
-  const stats =
-    meta.drift > 0 ? `${meta.drift}/${meta.total} drift` : `${meta.total} keys`;
-  const label = ` ${indicator} ${baseName} · ${stats} `;
+  const headerText = ` ${indicator} ${baseName} `;
+  const statsParts: { text: string; fg: RGBA }[] = [];
+  if (meta.missing > 0) {
+    statsParts.push({
+      text: `✗ ${meta.missing} missing`,
+      fg: COLORS.missing
+    });
+  }
+  if (meta.drift > 0) {
+    statsParts.push({
+      text: `${meta.drift}/${meta.total} drift`,
+      fg: COLORS.differs
+    });
+  }
+  if (statsParts.length === 0) {
+    statsParts.push({ text: `${meta.total} keys`, fg: COLORS.fgDim });
+  }
+  // ` · ` separator between header and stats; ` · ` between stats segments.
+  const statsLength = statsParts.reduce((sum, p) => sum + p.text.length + 3, 0); // ` · ` = 3 chars
+  const labelLength = headerText.length + statsLength + 1; // trailing space
+
   const rule = '─';
   const visible = Math.max(0, width - 2);
-  const beforeLen = Math.max(2, Math.floor((visible - label.length) / 2));
-  const afterLen = Math.max(0, visible - beforeLen - label.length);
-  const content = rule.repeat(beforeLen) + label + rule.repeat(afterLen);
+  const beforeLen = Math.max(2, Math.floor((visible - labelLength) / 2));
+  const afterLen = Math.max(0, visible - beforeLen - labelLength);
+
   const box = new BoxRenderable(renderer, {
     id,
     flexDirection: 'row',
@@ -1403,9 +1440,49 @@ function buildSectionDivider(
   });
   box.add(
     new TextRenderable(renderer, {
-      id: `${id}-text`,
-      content,
-      fg: meta.drift > 0 ? COLORS.differs : COLORS.fgSection
+      id: `${id}-lead`,
+      content: rule.repeat(beforeLen),
+      fg: COLORS.fgDim,
+      height: 1,
+      wrapMode: 'none'
+    })
+  );
+  box.add(
+    new TextRenderable(renderer, {
+      id: `${id}-name`,
+      content: headerText,
+      fg: COLORS.fgSection,
+      height: 1,
+      wrapMode: 'none'
+    })
+  );
+  for (const [i, part] of statsParts.entries()) {
+    box.add(
+      new TextRenderable(renderer, {
+        id: `${id}-sep-${i}`,
+        content: '· ',
+        fg: COLORS.fgDim,
+        height: 1,
+        wrapMode: 'none'
+      })
+    );
+    box.add(
+      new TextRenderable(renderer, {
+        id: `${id}-stat-${i}`,
+        content: `${part.text} `,
+        fg: part.fg,
+        height: 1,
+        wrapMode: 'none'
+      })
+    );
+  }
+  box.add(
+    new TextRenderable(renderer, {
+      id: `${id}-trail`,
+      content: rule.repeat(afterLen),
+      fg: COLORS.fgDim,
+      height: 1,
+      wrapMode: 'none'
     })
   );
   return box;
