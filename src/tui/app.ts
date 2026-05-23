@@ -316,20 +316,19 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   root.add(footer);
 
-  const hintA = new TextRenderable(renderer, {
+  const hintA = new BoxRenderable(renderer, {
     id: 'hint-a',
-    content: '',
-    wrapMode: 'none',
-    height: 1
+    flexDirection: 'row',
+    height: 1,
+    flexShrink: 0
   });
   footer.add(hintA);
 
-  const hintB = new TextRenderable(renderer, {
+  const hintB = new BoxRenderable(renderer, {
     id: 'hint-b',
-    content: '',
-    wrapMode: 'none',
-    fg: COLORS.fgDim,
-    height: 1
+    flexDirection: 'row',
+    height: 1,
+    flexShrink: 0
   });
   footer.add(hintB);
 
@@ -383,7 +382,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     content:
       'Enter · confirm    Ctrl-A · apply to all files    ' +
       'Ctrl-T · show/mask secrets    Esc · cancel',
-    fg: COLORS.fgDim,
+    fg: COLORS.fg,
     height: 1,
     marginTop: 2,
     wrapMode: 'none'
@@ -562,7 +561,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       valueColWidth,
       sectionOf
     );
-    refreshFooter(hintA, hintB, status, filterInput, state);
+    refreshFooter(hintA, hintB, status, filterInput, renderer, state);
     refreshPrompt(promptBox, promptBody, promptInput, renderer, matrix, state);
     helpBox.visible = state.helpOpen;
     dimOverlay.visible = state.helpOpen || state.mode === 'prompt';
@@ -1256,39 +1255,116 @@ function refreshMatrix(
   }
 }
 
+interface FooterSeg {
+  text: string;
+  fg: RGBA;
+}
+
+function bindings(specs: { key: string; label: string }[]): FooterSeg[] {
+  // "[key] label" with the brackets dim and the key + label in normal fg.
+  // Segments separated by dim " · ".
+  const out: FooterSeg[] = [];
+  specs.forEach((spec, i) => {
+    if (i > 0) out.push({ text: ' · ', fg: COLORS.fgDim });
+    out.push({ text: '[', fg: COLORS.fgDim });
+    out.push({ text: spec.key, fg: COLORS.fg });
+    out.push({ text: '] ', fg: COLORS.fgDim });
+    out.push({ text: spec.label, fg: COLORS.fg });
+  });
+  return out;
+}
+
+function renderHintBox(
+  box: BoxRenderable,
+  renderer: CliRenderer,
+  segs: FooterSeg[]
+): void {
+  removeAllChildren(box);
+  segs.forEach((seg, i) => {
+    box.add(
+      new TextRenderable(renderer, {
+        id: `${box.id}-seg-${i}`,
+        content: seg.text,
+        fg: seg.fg,
+        height: 1,
+        wrapMode: 'none'
+      })
+    );
+  });
+}
+
 function refreshFooter(
-  hintA: TextRenderable,
-  hintB: TextRenderable,
+  hintA: BoxRenderable,
+  hintB: BoxRenderable,
   status: TextRenderable,
   filterInput: InputRenderable,
+  renderer: CliRenderer,
   state: State
 ): void {
   const dirty = state.dirty.size;
-  const dirtyLabel = dirty > 0 ? `  ●${dirty} unsaved` : '';
+  const dirtyTail: FooterSeg[] =
+    dirty > 0
+      ? [
+          { text: '   ', fg: COLORS.fgDim },
+          { text: '●', fg: COLORS.differs },
+          { text: ` ${dirty} unsaved`, fg: COLORS.fg }
+        ]
+      : [];
 
   if (state.mode === 'filter') {
-    hintA.content = `[Enter] keep filter   [Esc] clear${dirtyLabel}`;
-    hintB.content = ' Filter:';
+    renderHintBox(hintA, renderer, [
+      ...bindings([
+        { key: 'Enter', label: 'keep filter' },
+        { key: 'Esc', label: 'clear' }
+      ]),
+      ...dirtyTail
+    ]);
+    renderHintBox(hintB, renderer, [{ text: ' Filter:', fg: COLORS.fgDim }]);
   } else if (state.mode === 'prompt') {
-    // Hints are shown inside the modal; collapse the footer hints so the
-    // user's attention stays on the popup.
-    hintA.content = '';
-    hintB.content = '';
+    renderHintBox(hintA, renderer, []);
+    renderHintBox(hintB, renderer, []);
   } else if (state.pane === 'sidebar') {
-    hintA.content =
-      `↑↓ move · Space toggle · b set base · Tab/→ matrix · ` +
-      `^S save · ? help · q quit${dirtyLabel}`;
-    hintB.content = 'Files pane';
+    renderHintBox(hintA, renderer, [
+      ...bindings([
+        { key: '↑↓', label: 'move' },
+        { key: 'Space', label: 'toggle' },
+        { key: 'b', label: 'set base' },
+        { key: 'Tab/→', label: 'matrix' },
+        { key: '^S', label: 'save' },
+        { key: '?', label: 'help' },
+        { key: 'q', label: 'quit' }
+      ]),
+      ...dirtyTail
+    ]);
+    renderHintBox(hintB, renderer, [{ text: 'Files pane', fg: COLORS.fgDim }]);
   } else {
-    // Line 1: actions (always visible). Line 2: current modes.
-    hintA.content =
-      `↑↓←→ move · Tab files · e edit · a add var · d del var · n new file · ` +
-      `= sync to all · c collapse · ^T secrets · ^Z undo · ^S save · ` +
-      `/ filter · ?/ß help · q quit${dirtyLabel}`;
-    hintB.content =
-      `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
-      `g group: ${state.grouping} · ` +
-      `secrets: ${state.showSecrets ? 'shown' : 'masked'}`;
+    renderHintBox(hintA, renderer, [
+      ...bindings([
+        { key: '↑↓←→', label: 'move' },
+        { key: 'Tab', label: 'files' },
+        { key: 'e', label: 'edit' },
+        { key: 'a', label: 'add var' },
+        { key: 'd', label: 'del var' },
+        { key: 'n', label: 'new file' },
+        { key: '=', label: 'sync to all' },
+        { key: 'c', label: 'collapse' },
+        { key: '^T', label: 'secrets' },
+        { key: '^Z', label: 'undo' },
+        { key: '^S', label: 'save' },
+        { key: '/', label: 'filter' },
+        { key: '?/ß', label: 'help' },
+        { key: 'q', label: 'quit' }
+      ]),
+      ...dirtyTail
+    ]);
+    renderHintBox(hintB, renderer, [
+      { text: 'view: ', fg: COLORS.fgDim },
+      { text: state.driftOnly ? 'drift' : 'all', fg: COLORS.fg },
+      { text: '  ·  group: ', fg: COLORS.fgDim },
+      { text: state.grouping, fg: COLORS.fg },
+      { text: '  ·  secrets: ', fg: COLORS.fgDim },
+      { text: state.showSecrets ? 'shown' : 'masked', fg: COLORS.fg }
+    ]);
   }
   filterInput.visible = state.mode === 'filter';
   status.content = state.message ?? '';
@@ -1650,29 +1726,31 @@ function buildSectionDivider(
   // when the section also has plain differs.
   const baseName = name ?? '(other)';
   const indicator = meta.collapsed ? '▸' : '▾';
-  // Build the label as a list of typed segments so we can colour just the
-  // status icons and numbers, keeping the name + connective glue dim.
+  // Names + descriptive words render in the normal foreground so the user
+  // reads the section name first. Icons / numbers / separators sit in dim
+  // grey as a quieter status hint.
   type Seg = { text: string; fg: RGBA };
   const segs: Seg[] = [
-    { text: ` ${indicator} ${baseName}  `, fg: COLORS.fgDim }
+    { text: ` ${indicator} `, fg: COLORS.fgDim },
+    { text: baseName, fg: COLORS.fg },
+    { text: '  ', fg: COLORS.fgDim }
   ];
   if (meta.missing > 0) {
-    segs.push({ text: '✗ ', fg: COLORS.missing });
-    segs.push({ text: `${meta.missing}`, fg: COLORS.missing });
-    segs.push({ text: ' missing  ', fg: COLORS.fgDim });
+    segs.push({ text: '✗ ', fg: COLORS.fgDim });
+    segs.push({ text: `${meta.missing}`, fg: COLORS.fgDim });
+    segs.push({ text: ' missing  ', fg: COLORS.fg });
   }
   if (meta.drift > 0) {
-    segs.push({ text: '≠ ', fg: COLORS.differs });
-    segs.push({ text: `${meta.drift}`, fg: COLORS.differs });
+    segs.push({ text: '≠ ', fg: COLORS.fgDim });
+    segs.push({ text: `${meta.drift}`, fg: COLORS.fgDim });
     segs.push({ text: '/', fg: COLORS.fgDim });
-    segs.push({ text: `${meta.total}`, fg: COLORS.differs });
-    segs.push({ text: ' drift  ', fg: COLORS.fgDim });
+    segs.push({ text: `${meta.total}`, fg: COLORS.fgDim });
+    segs.push({ text: ' drift  ', fg: COLORS.fg });
   }
   if (meta.missing === 0 && meta.drift === 0) {
     segs.push({ text: `${meta.total}`, fg: COLORS.fgDim });
-    segs.push({ text: ' keys  ', fg: COLORS.fgDim });
+    segs.push({ text: ' keys  ', fg: COLORS.fg });
   }
-  // Pad with a trailing space.
   segs.push({ text: ' ', fg: COLORS.fgDim });
 
   const labelLength = segs.reduce((sum, s) => sum + s.text.length, 0);
