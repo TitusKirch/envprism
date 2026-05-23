@@ -1,5 +1,5 @@
 name: ✨ Feature request
-description: Suggest an idea or improvement for the template
+description: Suggest an idea or improvement for envprism
 labels: ['enhancement', 'triage']
 body:
   - type: textarea
@@ -14,7 +14,7 @@ body:
     id: proposal
     attributes:
       label: Proposed solution
-      description: What would you like to see in the template? Config sketches welcome.
+      description: What would you like to see in envprism? Mockups / sketches welcome.
     validations:
       required: true
 

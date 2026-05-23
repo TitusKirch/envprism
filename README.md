@@ -1,87 +1,103 @@
 <div align="center">
 
-# 🧰 scaffold
+# 🔻 envprism
 
-**The kirchDev baseline — everything a new repo should ship with on day one, nothing more**
+**One set of variables, refracted into many environment views — a TUI for managing `.env*` files side by side**
 
 </div>
 
 ---
 
 ```bash
-gh repo create my-new-repo --template TitusKirch/scaffold
+bunx envprism
 ```
 
-That's it. Click **Use this template** (or use `gh`), edit a handful of placeholders, and the meta layer — lint, format, commit hooks, CI, CodeQL, Dependabot, release-please — is already wired up.
+Point `envprism` at a directory containing `.env*` files and it opens a matrix view: rows are variable keys, columns are files. Differences light up, missing keys are obvious, and you can edit cells in place — with comments and ordering preserved on write-back.
 
-## ✨ What's in the box
+> [!IMPORTANT]
+> `envprism` runs on **[Bun](https://bun.sh/)** 1.3+. The TUI is powered by [opentui](https://opentui.com/), which links to a native Zig core via `bun:ffi`. Node has no equivalent built-in FFI, so `npx envprism` will not work — install Bun first.
 
-- **🟢 Node + pnpm pinned** — `.nvmrc` (Node 24), `.npmrc` (pnpm 11 with sane defaults), `package.json` with `packageManager`.
-- **🧹 Lint & format via oxc** — `.oxlintrc.json`, `.oxfmtrc.json`, single `pnpm check` gate.
-- **🪝 Commit hooks** — Husky + `lint-staged` + `commitlint` enforcing Conventional Commits.
-- **🤖 Dependency PRs** — Dependabot (npm weekly, actions monthly) + `taze.config.js` for interactive upgrades.
-- **🔁 release-please** — full workflow + config + manifest so the new repo can publish from its first commit.
-- **🛡️ GitHub workflows** — `ci.yml` (lint + format check on PR), `codeql.yml` (push/PR + weekly).
-- **📋 Issue / PR templates** — bug report, feature request, question (`.yml` forms) + PR checklist.
-- **📄 Standard meta** — `LICENSE`, `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`.
+## ✨ Features
 
-The actual project code can be anything — PHP, Go, Rust, Vue, plain shell. `scaffold` only owns the meta layer that sits on top.
+- **🔍 Auto-discovery** — finds every `.env*` file in the current directory (or in `--paths a b c`).
+- **🧮 Matrix view** — rows = union of all variable keys, columns = files. The prism metaphor, literal.
+- **🎨 Diff highlights** — `≠ differs` (yellow), `✗ missing` (red), `★ extra` (purple), in-sync (neutral).
+- **✏️ Inline edit** — `e` or `Enter` on a cell opens an editor; writes preserve comments, blank lines, and key order in the original file.
+- **➕ Add / delete / new file** — `a` adds a variable to the focused file, `d` removes it, `n` scaffolds a new `.env.*` next to the base.
+- **↩️ Undo** — `Ctrl-Z` walks back the last 50 edits.
+- **🙈 Secret masking** — keys with `TOKEN`, `SECRET`, `PASSWORD`, `KEY`, `PRIVATE`, … render as `•••• (N)` so values don't appear over your shoulder.
+- **📂 Grouping** — comment banners like `# === Database ===` become section dividers in the TUI; `g` toggles to grouping by key prefix (`APP_*`, `DB_*`, `FEATURE_*`).
+- **🔎 Filter & view** — `/` filters keys live; `v` toggles to a drift-only view that hides keys already in sync.
+- **🧪 CI mode** — `envprism diff` prints a text or JSON drift report; `--check` exits non-zero when any file diverges.
+
+## 📺 What it looks like
+
+```
+╭─ Files (4) ────────────────╮╭─ Matrix · 31 keys ─────────────────────────────╮
+│  ★▸ .env.example           ││  KEY                   .env.example      .env  │
+│     .env                   ││  ─────────────── Application ───────────────── │
+│     .env.production        ││  APP_NAME              envprism          envpr │
+│     .env.staging           ││  APP_ENV               development       devel │
+│                            ││  APP_URL               http://localhos…  ≠ htt │
+│                            ││  PORT                  3000              ≠ 300 │
+│                            ││  LOG_LEVEL             info              ≠ deb │
+│                            ││  TZ                    UTC               ≠ Eur │
+│                            ││  ─────────────── Database ──────────────────── │
+│                            ││  DATABASE_URL          postgres://loca…  ≠ pos │
+│                            ││  DATABASE_POOL_SIZE    10                ≠ 5   │
+│                            ││  DATABASE_SSL          false             false │
+│                            ││  REDIS_URL             redis://localho…  redis │
+│                            ││  REDIS_DB              0                 ≠ 1   │
+│                            ││  ───────── Auth / Secrets — fill in… ───────── │
+│                            ││  SECRET_KEY            ••••              ≠ ••• │
+│                            ││  API_TOKEN             ••••              ≠ ••• │
+│                            ││  JWT_PRIVATE_KEY       ••••              ≠ ••• │
+╰────────────────────────────╯╰────────────────────────────────────────────────╯
+ ↑↓←→ move · e edit · a add · d del · n new · ^Z undo · ^S save · / filter · ? help · q quit
+ v view: all · g group: banner
+```
+
+`envprism diff` (non-interactive, CI-friendly):
+
+```text
+$ envprism diff examples/
+Base: .env.example  (vs. .env, .env.production, .env.staging)
+
+KEY                  .env             .env.production  .env.staging
+API_TOKEN            ≠ differs        ≠ differs        ≠ differs
+DEBUG                ★ extra          ✗ missing        ✗ missing
+FEATURE_NEW_UI       ≠ differs        ✗ missing        ≠ differs
+PORT                 ≠ differs        — same           — same
+…
+
+8 key(s) differ across 3 file(s) (21 cell drift).
+```
+
+```bash
+envprism diff --json | jq          # structured drift report
+envprism diff --check; echo $?     # 1 if any file drifts, 0 otherwise
+```
 
 ## 🚀 Setup
 
-After clicking **Use this template**:
+Install Bun (one-time): see [bun.sh](https://bun.sh/).
 
-1. Clone your new repo.
-2. Replace the placeholders listed in [Customising the template](#-customising-the-template).
-3. Reset release-please as described in [Resetting release-please](#-resetting-release-please) (only if you want to start at `v0.0.0`).
-4. `pnpm install` — Husky activates the hooks via the `prepare` script.
-5. Add your project code and ship the first commit:
+Run without installing envprism:
 
-   ```bash
-   git commit -m "chore: initial commit from scaffold"
-   ```
+```bash
+bunx envprism                      # TUI in the current directory
+bunx envprism tui path/to/repo     # TUI scanning another directory
+bunx envprism diff path/to/repo    # non-interactive drift report
+```
 
-## 🧰 Customising the template
+Or install globally:
 
-Every file below references `TitusKirch/scaffold`, the maintainer's name, or the maintainer's email. Search-and-replace these to your repo's identity before the first push.
+```bash
+bun add -g envprism
+envprism
+```
 
-| File                                  | Replace                                                                          |
-| :------------------------------------ | :------------------------------------------------------------------------------- |
-| `package.json`                        | `name`, `description`, `homepage`, `bugs.url`, `repository.url`, `author`        |
-| `README.md`                           | Project title, tagline, hook snippet, every `TitusKirch/scaffold` link           |
-| `LICENSE`                             | Copyright year + holder                                                          |
-| `CODE_OF_CONDUCT.md`                  | Enforcement contact email                                                        |
-| `CONTRIBUTING.md`                     | Every `TitusKirch/scaffold` link, the development setup section                  |
-| `SECURITY.md`                         | Advisory URL, contact email, scope wording                                       |
-| `.github/ISSUE_TEMPLATE/bug_report.yml`, `feature_request.yml`, `question.yml` | Links pointing to `TitusKirch/scaffold` |
-| `.github/pull_request_template.md`    | Example commit message in the title hint                                         |
-| `release-please-config.json`          | `packages["."]["package-name"]`                                                  |
-| `CLAUDE.md`                           | **Delete** and regenerate with `/init` in Claude Code — it's scaffold-specific  |
-
-> [!TIP]
-> A quick `grep -rn "TitusKirch/scaffold" .` catches every reference in one sweep.
-
-## 🔁 Resetting release-please
-
-`scaffold` ships with an initial manifest pinned at `0.0.0`. For most cases you can leave it alone — release-please will simply propose a first release PR after your first conventional commit on `main`. If you want a truly clean slate:
-
-1. **Manifest** — make sure `.release-please-manifest.json` is `{ ".": "0.0.0" }` (the default).
-2. **Changelog** — delete `CHANGELOG.md` if your fresh repo somehow inherited one.
-3. **Config** — update `release-please-config.json` → `packages["."]["package-name"]` to your repo name.
-4. **Workflow permissions** — in **Settings → Actions → General → Workflow permissions**, enable **Read and write permissions** so release-please can open its PR.
-5. **Tags & releases (optional)** — if you copied the repo with history, drop old tags:
-
-   ```bash
-   git tag -l | xargs -r git tag -d
-   ```
-
-   …and clear any stale entries on the GitHub **Releases** tab.
-
-6. **First commit** — push a Conventional Commit on `main` (`feat: …`, `fix: …`). release-please opens the initial release PR; merge it and your first tagged release ships.
-
-## 💡 Why "scaffold" and not "template-\*"
-
-Single word, brandable, language-neutral. Future stack-specific templates can sit next to it as `scaffold-laravel`, `scaffold-nuxt`, etc.
+Requirements: **Bun 1.3+**.
 
 ## 🤝 Contributing
 

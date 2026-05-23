@@ -1,18 +1,18 @@
 name: 🐛 Bug report
-description: Something in the template isn't working as expected
+description: Something in envprism isn't working as expected
 labels: ['bug', 'triage']
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for taking the time to report a bug. Please fill out the form below.
-        For security vulnerabilities, see [SECURITY.md](https://github.com/TitusKirch/scaffold/blob/main/SECURITY.md) instead.
+        For security vulnerabilities, see [SECURITY.md](https://github.com/TitusKirch/envprism/blob/main/SECURITY.md) instead.
 
   - type: input
     id: file
     attributes:
-      label: Affected file / template
-      placeholder: e.g. .github/workflows/ci.yml
+      label: Affected area / command
+      placeholder: e.g. `envprism` matrix view, file write-back
     validations:
       required: true
 
