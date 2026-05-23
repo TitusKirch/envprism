@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveBase } from '../src/core/base.ts';
-import { parseEnv } from '../src/core/parse.ts';
+import { resolveBase } from '@/core/base.ts';
+import { parseEnv } from '@/core/parse.ts';
 
 const makeFile = (path: string) => parseEnv('A=1\n', path);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSecretKey, maskValue } from '../src/core/mask.ts';
+import { isSecretKey, maskValue } from '@/core/mask.ts';
 
 describe('isSecretKey', () => {
   it.each([

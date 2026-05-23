@@ -1,4 +1,4 @@
-import type { EnvFile, KvEntry, Quoting } from './types.ts';
+import type { EnvFile, KvEntry, Quoting } from '@/core/types.ts';
 
 /**
  * Serialize an {@link EnvFile} back to a string. Unchanged entries are emitted

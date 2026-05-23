@@ -1,6 +1,6 @@
 import { basename } from 'pathe';
-import type { Matrix, CellState } from './matrix.ts';
-import type { EnvFile } from './types.ts';
+import type { Matrix, CellState } from '@/core/matrix.ts';
+import type { EnvFile } from '@/core/types.ts';
 
 export interface DiffReport {
   base: string;

@@ -10,6 +10,13 @@ const nodeBuiltins = new Set([
 const runtimeDeps = ['citty', 'consola', 'pathe', '@opentui/core'];
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+      '@tui': resolve(__dirname, 'src/tui'),
+      '@test': resolve(__dirname, 'tests')
+    }
+  },
   build: {
     target: 'node24',
     outDir: 'dist',

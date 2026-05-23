@@ -1,9 +1,9 @@
 import { defineCommand } from 'citty';
 import consola from 'consola';
 import { resolve } from 'pathe';
-import { resolveBase } from '../core/base.ts';
-import { discoverEnvFiles } from '../core/discover.ts';
-import { buildMatrix } from '../core/matrix.ts';
+import { resolveBase } from '@/core/base.ts';
+import { discoverEnvFiles } from '@/core/discover.ts';
+import { buildMatrix } from '@/core/matrix.ts';
 
 interface TuiInvocation {
   paths?: string | string[];

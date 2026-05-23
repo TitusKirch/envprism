@@ -1,9 +1,9 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseEnv } from '../src/core/parse.ts';
-import { rebuildKvLine, serializeEnv } from '../src/core/serialize.ts';
-import type { KvEntry } from '../src/core/types.ts';
+import { parseEnv } from '@/core/parse.ts';
+import { rebuildKvLine, serializeEnv } from '@/core/serialize.ts';
+import type { KvEntry } from '@/core/types.ts';
 
 const FIXTURE_DIR = join(__dirname, 'fixtures');
 

@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'pathe';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { discoverEnvFiles } from '../src/core/discover.ts';
+import { discoverEnvFiles } from '@/core/discover.ts';
 import { rm } from 'node:fs/promises';
 
 describe('discoverEnvFiles', () => {

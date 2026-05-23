@@ -8,10 +8,10 @@ import {
 } from '@opentui/core';
 import { writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'pathe';
-import { isSecretKey, maskValue } from '../core/mask.ts';
-import { buildMatrix, type CellState, type Matrix } from '../core/matrix.ts';
-import { rebuildKvLine, serializeEnv } from '../core/serialize.ts';
-import type { EnvFile, KvEntry } from '../core/types.ts';
+import { isSecretKey, maskValue } from '@/core/mask.ts';
+import { buildMatrix, type CellState, type Matrix } from '@/core/matrix.ts';
+import { rebuildKvLine, serializeEnv } from '@/core/serialize.ts';
+import type { EnvFile, KvEntry } from '@/core/types.ts';
 
 type Mode = 'browse' | 'filter' | 'prompt';
 

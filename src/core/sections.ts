@@ -1,4 +1,4 @@
-import type { EnvEntry, EnvFile } from './types.ts';
+import type { EnvEntry, EnvFile } from '@/core/types.ts';
 
 const SEP_CHARS = new Set(['=', '-', '#', '~', '*']);
 const SPACE_CHARS = new Set([' ', '\t']);

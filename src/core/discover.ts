@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'pathe';
-import { parseEnv } from './parse.ts';
-import type { EnvFile } from './types.ts';
+import { parseEnv } from '@/core/parse.ts';
+import type { EnvFile } from '@/core/types.ts';
 
 const SKIP_SUFFIXES = ['.swp', '~', '.bak'];
 

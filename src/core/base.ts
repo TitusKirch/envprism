@@ -1,5 +1,5 @@
 import { basename } from 'pathe';
-import type { EnvFile } from './types.ts';
+import type { EnvFile } from '@/core/types.ts';
 
 /**
  * Resolve which {@link EnvFile} acts as the base (reference) for diff. Order:

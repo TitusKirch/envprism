@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
-import { diffCommand } from './commands/diff.ts';
-import { runTui, tuiCommand } from './commands/tui.ts';
+import { diffCommand } from '@/commands/diff.ts';
+import { runTui, tuiCommand } from '@/commands/tui.ts';
 
 const SUBCOMMANDS = new Set(['tui', 'diff']);
 
