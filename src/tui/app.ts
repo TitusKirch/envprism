@@ -2,7 +2,6 @@ import {
   BoxRenderable,
   type CliRenderer,
   createCliRenderer,
-  InputRenderable,
   RGBA,
   ScrollBoxRenderable,
   TextRenderable
@@ -72,6 +71,10 @@ interface State {
   // Drives a green ● marker so unsaved local changes are visually distinct
   // from "this file disagrees with base", which uses the diff icons.
   modified: Set<string>;
+  // Current value of the prompt input. We accumulate characters ourselves
+  // in the global key handler instead of relying on opentui's InputRenderable,
+  // because the InputRenderable swallows Esc (it interprets it as "blur").
+  promptInput: string;
 }
 
 // Three semantic colours only. Everything else is grayscale so the eye
@@ -254,7 +257,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     enabled: new Set(allFiles),
     showSecrets: false,
     collapsed: new Set(),
-    modified: new Set()
+    modified: new Set(),
+    promptInput: ''
   };
 
   const cellKey = (key: string, file: EnvFile) => `${key}|${file.path}`;
@@ -440,10 +444,6 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     flexDirection: 'column',
     flexGrow: 1
   });
-  const promptInput = new InputRenderable(renderer, {
-    id: 'prompt-input',
-    placeholder: ''
-  });
   const promptHint = new TextRenderable(renderer, {
     id: 'prompt-hint',
     content: '',
@@ -598,15 +598,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       sectionOf
     );
     refreshFooter(hintA, hintB, status, renderer, state);
-    refreshPrompt(
-      promptBox,
-      promptBody,
-      promptInput,
-      promptHint,
-      renderer,
-      matrix,
-      state
-    );
+    refreshPrompt(promptBox, promptBody, promptHint, renderer, matrix, state);
     refreshHelp(helpBox, renderer, state);
     refreshFilter(filterBox, filterField, filterStatus, matrix, state);
     dimOverlay.visible =
@@ -640,27 +632,18 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     };
 
     const openPrompt = (prompt: Prompt, value = '', placeholder = '') => {
+      void placeholder; // input is rendered as plain text now, no placeholder slot
       state.prompt = prompt;
       state.mode = 'prompt';
       state.message = null;
-      promptInput.placeholder = placeholder;
-      promptInput.value = value;
+      state.promptInput = value;
       refresh();
-      // Defer focus to next tick so the keystroke that opened the prompt
-      // (e.g. "n" or "a") finishes propagating before the input becomes
-      // focused — otherwise that same char ends up typed into the input.
-      // The value is also re-cleared as a belt-and-braces guard.
-      queueMicrotask(() => {
-        promptInput.value = value;
-        promptInput.focus();
-      });
     };
 
     const closePrompt = (msg: string | null = null) => {
-      promptInput.blur();
-      promptInput.value = '';
       state.prompt = null;
       state.mode = 'browse';
+      state.promptInput = '';
       state.message = msg;
       refresh();
     };
@@ -843,7 +826,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     const commitPrompt = () => {
       if (!state.prompt) return;
       const p = state.prompt;
-      const raw = promptInput.value;
+      const raw = state.promptInput;
 
       if (p.kind === 'edit') {
         const existing = findKvEntry(p.file, p.key);
@@ -989,22 +972,29 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
       if (state.mode === 'prompt') {
         if (key.name === 'escape') {
-          key.preventDefault?.();
           cancelPrompt();
-        } else if (key.name === 'return') {
-          key.preventDefault?.();
+          return;
+        }
+        if (key.name === 'return') {
           commitPrompt();
-        } else if (key.ctrl && key.name === 't') {
-          key.preventDefault?.();
+          return;
+        }
+        if (key.name === 'backspace') {
+          if (state.promptInput.length > 0) {
+            state.promptInput = state.promptInput.slice(0, -1);
+            refresh();
+          }
+          return;
+        }
+        if (key.ctrl && key.name === 't') {
           state.showSecrets = !state.showSecrets;
           refresh();
-        } else if (key.ctrl && key.name === 'a' && state.prompt) {
-          // Apply current input value to *every* file (not just the focused
-          // one). Only sensible during edit / add-value prompts where the
-          // input represents a value.
+          return;
+        }
+        if (key.ctrl && key.name === 'a' && state.prompt) {
           const p = state.prompt;
           if (p.kind === 'edit' || p.kind === 'add-value') {
-            const touched = applyToAllFiles(p.key, promptInput.value);
+            const touched = applyToAllFiles(p.key, state.promptInput);
             rebuildMatrix();
             closePrompt(
               touched > 0
@@ -1012,6 +1002,12 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
                 : `${p.key} already had that value everywhere.`
             );
           }
+          return;
+        }
+        const seq = key.sequence ?? '';
+        if (!key.ctrl && seq.length === 1 && seq >= ' ' && seq !== '\x7f') {
+          state.promptInput += seq;
+          refresh();
         }
         return;
       }
@@ -1361,22 +1357,17 @@ function refreshMatrix(
     scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
   }
 
-  // Keep the focused row in view. Sync attempt first (in case layout was
-  // already up-to-date), plus a deferred retry once yoga has finished
-  // measuring the freshly-added rows. Both target the current rowIdx —
-  // throttled refresh means there's only one of these pending at a time.
+  // Keep the focused row in view. Single deferred call so layout has been
+  // computed before we ask for a scroll target; doing it twice (sync +
+  // deferred) was causing visible "jumps" because the two calls landed on
+  // slightly different layouts.
   if (state.mode === 'browse' && state.visibleItems.length > 0) {
     const target = `row-${state.rowIdx}`;
-    try {
-      scrollBox.scrollChildIntoView(target);
-    } catch {
-      /* not laid out yet */
-    }
     setImmediate(() => {
       try {
         scrollBox.scrollChildIntoView(target);
       } catch {
-        /* row destroyed before scroll ran */
+        /* row not laid out yet — next refresh will retry */
       }
     });
   }
@@ -1589,7 +1580,6 @@ function refreshFooter(
 function refreshPrompt(
   promptBox: BoxRenderable,
   promptBody: BoxRenderable,
-  promptInput: InputRenderable,
   promptHint: TextRenderable,
   renderer: CliRenderer,
   matrix: Matrix,
@@ -1597,7 +1587,6 @@ function refreshPrompt(
 ): void {
   const open = state.mode === 'prompt' && state.prompt !== null;
   promptBox.visible = open;
-  promptInput.visible = open;
   if (!open || !state.prompt) return;
 
   promptBox.title = promptLabelText(state.prompt);
@@ -1616,7 +1605,17 @@ function refreshPrompt(
   // and its current value (read-only). For add-key / new-file there's no
   // context to show — just the input.
   removeAllChildren(promptBody);
-  promptBody.add(promptInput);
+  // Input is rendered as plain text so we can guarantee char + Esc handling
+  // ourselves (opentui's InputRenderable swallows Esc as "blur").
+  promptBody.add(
+    new TextRenderable(renderer, {
+      id: 'prompt-input-text',
+      content: `▸ ${state.promptInput}▏`,
+      fg: COLORS.fg,
+      height: 1,
+      wrapMode: 'none'
+    })
+  );
   // Show validation errors inside the modal so they aren't hidden behind
   // the dim overlay. state.message is set by commitPrompt when input is
   // invalid (and cleared on each fresh openPrompt).
