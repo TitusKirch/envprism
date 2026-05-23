@@ -7,7 +7,14 @@ const nodeBuiltins = new Set([
   ...builtinModules.map((m) => `node:${m}`)
 ]);
 
-const runtimeDeps = ['citty', 'consola', 'pathe', '@opentui/core'];
+const runtimeDeps = [
+  'c12',
+  'citty',
+  'consola',
+  'defu',
+  'pathe',
+  '@opentui/core'
+];
 
 export default defineConfig({
   resolve: {
@@ -26,7 +33,8 @@ export default defineConfig({
     lib: {
       entry: {
         'bin/envprism': resolve(__dirname, 'src/bin/envprism.ts'),
-        index: resolve(__dirname, 'src/index.ts')
+        index: resolve(__dirname, 'src/index.ts'),
+        'config/define': resolve(__dirname, 'src/config/define.ts')
       },
       formats: ['es']
     },
