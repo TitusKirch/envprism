@@ -84,6 +84,14 @@ describe('rebuildMatrix', () => {
     rebuildMatrix(ctx);
     expect(ctx.currentBase).toBe(dev);
   });
+
+  it('clamps an out-of-range sidebarIdx', () => {
+    const { base, dev } = baseFixtures();
+    const ctx = makeTestCtx([base, dev], base);
+    ctx.state.sidebarIdx = 99;
+    rebuildMatrix(ctx);
+    expect(ctx.state.sidebarIdx).toBe(ctx.allFiles.length - 1);
+  });
 });
 
 describe('focus + undo helpers', () => {

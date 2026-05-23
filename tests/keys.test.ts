@@ -252,6 +252,40 @@ describe('handleBrowseKey — more browse keys', () => {
     handleBrowseKey(ctx, key({ name: 'tab' }), noop);
     expect(ctx.state.pane).toBe('matrix');
   });
+
+  it('sidebar pane: right returns to matrix, Space toggles, ? opens help', () => {
+    const { base, dev } = fx();
+    const ctx = makeTestCtx([base, dev], base);
+    ctx.state.pane = 'sidebar';
+    handleBrowseKey(ctx, key({ name: 'right' }), noop);
+    expect(ctx.state.pane).toBe('matrix');
+
+    ctx.state.pane = 'sidebar';
+    ctx.state.sidebarIdx = ctx.allFiles.indexOf(dev);
+    handleBrowseKey(ctx, key({ name: '', sequence: ' ' }), noop);
+    expect(ctx.state.enabled.has(dev)).toBe(false);
+
+    handleBrowseKey(ctx, key({ name: '', sequence: '?' }), noop);
+    expect(ctx.state.helpOpen).toBe(true);
+  });
+
+  it('a opens the add-key prompt', () => {
+    const { base, dev } = fx();
+    const ctx = makeTestCtx([base, dev], base);
+    ctx.state.colIdx = 0;
+    handleBrowseKey(ctx, key({ name: 'a' }), noop);
+    expect(ctx.state.prompt).toMatchObject({ kind: 'add-key' });
+  });
+
+  it('a pending quit confirmation is cleared by any other key', () => {
+    const { base, dev } = fx();
+    const ctx = makeTestCtx([base, dev], base);
+    ctx.state.confirmQuit = true;
+    ctx.state.message = 'pending';
+    handleBrowseKey(ctx, key({ name: 'down' }), noop);
+    expect(ctx.state.confirmQuit).toBe(false);
+    expect(ctx.state.message).toBeNull();
+  });
 });
 
 describe('handlePromptKey — more', () => {

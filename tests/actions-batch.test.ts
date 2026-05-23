@@ -125,4 +125,34 @@ describe('setBase', () => {
     expect(ctx.currentBase).toBe(dev);
     expect(ctx.matrix.base).toBe(dev);
   });
+
+  it('is a no-op note when the selected file is already the base', () => {
+    const { base, dev } = fixtures();
+    const ctx = makeTestCtx([base, dev], base);
+    ctx.state.sidebarIdx = ctx.allFiles.indexOf(base);
+    setBase(ctx);
+    expect(ctx.state.message).toMatch(/already the base/i);
+  });
+});
+
+describe('syncToAll — guard rails', () => {
+  it('warns when the cursor is not on a key row', () => {
+    const { base, dev } = fixtures();
+    const ctx = makeTestCtx([base, dev], base, {
+      heuristics: { grouping: 'prefix' }
+    });
+    ctx.state.rowIdx = ctx.state.visibleItems.findIndex(
+      (i) => i.kind === 'divider'
+    );
+    syncToAll(ctx);
+    expect(ctx.state.message).toMatch(/move onto a variable row/i);
+  });
+
+  it('warns when the focused file has no value to sync', () => {
+    const { base, dev, prod } = fixtures();
+    const ctx = makeTestCtx([base, dev, prod], base);
+    focusOnKey(ctx, 'PORT', ctx.matrix.files.indexOf(prod)); // PORT missing in prod
+    syncToAll(ctx);
+    expect(ctx.state.message).toMatch(/no value/i);
+  });
 });

@@ -38,6 +38,16 @@ describe('saveDirty', () => {
     expect(ctx.state.message).toMatch(/saved 1 file/i);
   });
 
+  it('pluralizes the saved-files message for multiple files', async () => {
+    const base = file(join(dir, '.env.example'), 'A=1\n');
+    const dev = file(join(dir, '.env'), 'A=2\n');
+    const ctx = makeTestCtx([base, dev], base);
+    ctx.state.dirty.add(base);
+    ctx.state.dirty.add(dev);
+    await saveDirty(ctx);
+    expect(ctx.state.message).toMatch(/saved 2 files/i);
+  });
+
   it('does nothing when there are no dirty files', async () => {
     const base = file(join(dir, '.env.example'), 'A=1\n');
     const ctx = makeTestCtx([base], base);

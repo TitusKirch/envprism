@@ -142,6 +142,37 @@ describe('commitPrompt', () => {
   });
 });
 
+describe('start* guard rails', () => {
+  it('startEdit warns when the cursor is not on a key row', () => {
+    const { base, dev } = fixtures();
+    const ctx = makeTestCtx([base, dev], base, {
+      heuristics: { grouping: 'prefix' }
+    });
+    ctx.state.rowIdx = ctx.state.visibleItems.findIndex(
+      (i) => i.kind === 'divider'
+    );
+    startEdit(ctx);
+    expect(ctx.state.mode).toBe('browse');
+    expect(ctx.state.message).toMatch(/move onto a variable row/i);
+  });
+
+  it('startDelete warns when the key is absent from the focused file', () => {
+    const { base, dev } = fixtures();
+    const ctx = makeTestCtx([base, dev], base);
+    focusOnKey(ctx, 'PORT', ctx.matrix.files.indexOf(dev)); // PORT missing in dev
+    startDelete(ctx);
+    expect(ctx.state.message).toMatch(/not present/i);
+  });
+
+  it('startAdd is a no-op when there is no focused file', () => {
+    const { base, dev } = fixtures();
+    const ctx = makeTestCtx([base, dev], base);
+    ctx.state.colIdx = 99;
+    startAdd(ctx);
+    expect(ctx.state.prompt).toBeNull();
+  });
+});
+
 describe('cancelPrompt', () => {
   it('closes the prompt with a cancelled message', () => {
     const { base, dev } = fixtures();

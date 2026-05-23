@@ -86,4 +86,20 @@ describe('diff command', () => {
     await run({ paths: dir });
     expect(lastExit).toBe(1);
   });
+
+  it('emits JSON when the config sets diff.json (no --json flag)', async () => {
+    await withDrift();
+    await writeFile(
+      join(dir, 'envprism.config.json'),
+      JSON.stringify({ diff: { json: true } })
+    );
+    await run({ paths: dir, config: join(dir, 'envprism.config.json') });
+    expect(() => JSON.parse(out)).not.toThrow();
+  });
+
+  it('accepts an array of paths', async () => {
+    await withDrift();
+    await run({ paths: [dir] });
+    expect(out).toMatch(/Base:/);
+  });
 });
