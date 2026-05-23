@@ -56,6 +56,7 @@ interface State {
   pane: Pane;
   sidebarIdx: number;
   enabled: Set<EnvFile>;
+  showSecrets: boolean;
 }
 
 const COLORS = {
@@ -118,6 +119,7 @@ function buildHelpLines(): HelpLine[] {
     { kind: 'entry', text: '  /                 Filter keys' },
     { kind: 'entry', text: '  v                 All keys ↔ drift-only' },
     { kind: 'entry', text: '  g                 Group by prefix ↔ banner' },
+    { kind: 'entry', text: '  s                 Show / mask secret values' },
     { kind: 'blank' },
     { kind: 'header', text: 'Help & exit' },
     { kind: 'entry', text: '  ? / ß             Toggle this overlay' },
@@ -182,7 +184,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     undo: [],
     pane: 'matrix',
     sidebarIdx: 0,
-    enabled: new Set(allFiles)
+    enabled: new Set(allFiles),
+    showSecrets: false
   };
 
   const pushUndo = (entry: UndoEntry) => {
@@ -336,6 +339,23 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   promptBox.add(promptHint);
   renderer.root.add(promptBox);
 
+  // Full-screen dim layer drawn below the prompt and help overlays so the
+  // matrix fades back when a modal is active. Solid dark backgroundColor at
+  // reduced opacity feels like a real dim/scrim.
+  const dimOverlay = new BoxRenderable(renderer, {
+    id: 'dim-overlay',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 40,
+    backgroundColor: RGBA.fromHex('#000000'),
+    opacity: 0.6,
+    visible: false
+  });
+  renderer.root.add(dimOverlay);
+
   // Floating help overlay. Hidden until '?' / 'ß' opens it.
   const helpBox = new BoxRenderable(renderer, {
     id: 'help-overlay',
@@ -429,6 +449,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     refreshFooter(hintA, hintB, status, filterInput, state);
     refreshPrompt(promptBox, promptBody, promptInput, renderer, matrix, state);
     helpBox.visible = state.helpOpen;
+    dimOverlay.visible = state.helpOpen || state.mode === 'prompt';
   };
 
   recomputeVisibleKeys();
@@ -528,19 +549,18 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     const setBase = () => {
       const file = allFiles[state.sidebarIdx];
       if (!file) return;
-      if (!state.enabled.has(file)) {
-        state.message = `Cannot set ${basename(file.path)} as base — file is hidden.`;
-        refresh();
-        return;
-      }
       if (file === currentBase) {
         state.message = `${basename(file.path)} is already the base.`;
         refresh();
         return;
       }
+      const wasDisabled = !state.enabled.has(file);
+      if (wasDisabled) state.enabled.add(file);
       currentBase = file;
       rebuildMatrix();
-      state.message = `${basename(file.path)} is now the base.`;
+      state.message = wasDisabled
+        ? `${basename(file.path)} is now the base (re-enabled).`
+        : `${basename(file.path)} is now the base.`;
       refresh();
     };
 
@@ -836,6 +856,15 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
             : 'Full view.';
           recomputeVisibleKeys();
           return refresh();
+        case 's':
+          if (!key.ctrl) {
+            state.showSecrets = !state.showSecrets;
+            state.message = state.showSecrets
+              ? 'Showing secret values in plain text.'
+              : 'Masking secret values.';
+            return refresh();
+          }
+          return;
         case 'g': {
           const prevKey = state.visibleKeys[state.rowIdx];
           state.grouping = state.grouping === 'banner' ? 'prefix' : 'banner';
@@ -957,7 +986,7 @@ function refreshMatrix(
       );
       lastSection = section;
     }
-    const secret = isSecretKey(key);
+    const secret = isSecretKey(key) && !state.showSecrets;
     const cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[] = [
       { text: key, fg: COLORS.fg, width: KEY_COL_WIDTH }
     ];
@@ -1017,7 +1046,8 @@ function refreshFooter(
       `^Z undo · ^S save · / filter · ?/ß help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
-      `g group: ${state.grouping}`;
+      `g group: ${state.grouping} · ` +
+      `s secrets: ${state.showSecrets ? 'shown' : 'masked'}`;
   }
   filterInput.visible = state.mode === 'filter';
   status.content = state.message ?? '';
@@ -1038,20 +1068,32 @@ function refreshPrompt(
 
   promptBox.title = promptLabelText(state.prompt);
 
-  // Rebuild the body. Edit / add-value render a per-file table with the
-  // input replacing the focused file's value cell — plus an arrow so the
-  // old → new transition is explicit. add-key and new-file render the input
-  // alone (no per-file context yet).
+  // Body layout: full-width input on top, then a context table of every file
+  // and its current value (read-only). For add-key / new-file there's no
+  // context to show — just the input.
   removeAllChildren(promptBody);
   const p = state.prompt;
+  promptBody.add(promptInput);
+
   if (p.kind === 'edit' || p.kind === 'add-value') {
+    const secret = isSecretKey(p.key) && !state.showSecrets;
     const nameWidth = Math.min(
       26,
       Math.max(...matrix.files.map((f) => basename(f.path).length + 2))
     );
-    const valueWidth = 22;
-    const secret = isSecretKey(p.key);
-    promptBox.height = Math.min(20, 4 + matrix.files.length + 2);
+    promptBox.height = Math.min(20, 5 + matrix.files.length + 2);
+
+    promptBody.add(
+      new TextRenderable(renderer, {
+        id: 'prompt-table-header',
+        content: 'Current values',
+        fg: COLORS.fgSection,
+        wrapMode: 'none',
+        height: 1,
+        marginTop: 1
+      })
+    );
+
     for (const file of matrix.files) {
       const isTarget = file === p.file;
       const row = new BoxRenderable(renderer, {
@@ -1060,7 +1102,6 @@ function refreshPrompt(
         height: 1,
         flexShrink: 0
       });
-      // Column 1: name + focus marker
       row.add(
         new TextRenderable(renderer, {
           id: `prompt-row-${file.path}-name`,
@@ -1072,9 +1113,6 @@ function refreshPrompt(
           wrapMode: 'none'
         })
       );
-      // Column 2: current value (read-only). For the focused row this shows
-      // the value *before* the edit so the user keeps the original in sight
-      // while typing the replacement into the input.
       const entry = findKvEntry(file, p.key);
       const current = entry
         ? formatValue(entry.value, secret) || '—'
@@ -1082,31 +1120,16 @@ function refreshPrompt(
       row.add(
         new TextRenderable(renderer, {
           id: `prompt-row-${file.path}-value`,
-          content: truncate(current, valueWidth - 1).padEnd(valueWidth),
+          content: current,
           fg: !entry ? COLORS.missing : isTarget ? COLORS.fg : COLORS.fgDim,
           height: 1,
           wrapMode: 'none'
         })
       );
-      // Column 3: arrow + input (focused only).
-      if (isTarget) {
-        row.add(
-          new TextRenderable(renderer, {
-            id: `prompt-row-${file.path}-arrow`,
-            content: '→ ',
-            fg: COLORS.fgDim,
-            height: 1,
-            wrapMode: 'none'
-          })
-        );
-        row.add(promptInput);
-      }
       promptBody.add(row);
     }
   } else {
-    // add-key / new-file → input only.
     promptBox.height = 6;
-    promptBody.add(promptInput);
   }
 }
 
