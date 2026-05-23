@@ -129,12 +129,19 @@ function buildHelpLines(): HelpLine[] {
       kind: 'entry',
       text: '  c                 Collapse / expand focused section'
     },
+    {
+      kind: 'entry',
+      text: '  Shift-C           Expand every collapsed section'
+    },
     { kind: 'blank' },
     { kind: 'header', text: 'View' },
     { kind: 'entry', text: '  /                 Filter keys' },
     { kind: 'entry', text: '  v                 All keys ↔ drift-only' },
     { kind: 'entry', text: '  g                 Group by prefix ↔ banner' },
-    { kind: 'entry', text: '  s                 Show / mask secret values' },
+    {
+      kind: 'entry',
+      text: '  s / Ctrl-T        Show / mask secret values'
+    },
     { kind: 'blank' },
     { kind: 'header', text: 'Help & exit' },
     { kind: 'entry', text: '  ? / ß             Toggle this overlay' },
@@ -183,6 +190,11 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   let currentBase = initialMatrix.base;
   let matrix = initialMatrix;
 
+  // Prefer banner grouping when the base file actually has section banners;
+  // otherwise prefix grouping is more useful out of the box.
+  const hasBanners = initialMatrix.keys.some(
+    (k) => initialMatrix.sectionOf(k) !== undefined
+  );
   const state: State = {
     mode: 'browse',
     filter: '',
@@ -194,7 +206,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     message: null,
     driftOnly: false,
     confirmQuit: false,
-    grouping: 'prefix',
+    grouping: hasBanners ? 'banner' : 'prefix',
     helpOpen: false,
     undo: [],
     pane: 'matrix',
@@ -734,6 +746,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     const onKey = (key: {
       name: string;
       ctrl?: boolean;
+      shift?: boolean;
       sequence?: string;
     }) => {
       if (state.helpOpen) {
@@ -794,6 +807,13 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       if (key.ctrl && key.name === 'z') {
         state.confirmQuit = false;
         return undo();
+      }
+      if (key.ctrl && key.name === 't') {
+        state.showSecrets = !state.showSecrets;
+        state.message = state.showSecrets
+          ? 'Showing secret values in plain text.'
+          : 'Masking secret values.';
+        return refresh();
       }
 
       const tryQuit = () => {
@@ -895,6 +915,19 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           }
           return;
         case 'c': {
+          if (key.shift) {
+            // Capital C — expand every collapsed section. Use this when all
+            // keys you'd navigate to are hidden behind a fold.
+            if (state.collapsed.size === 0) {
+              state.message = 'Nothing collapsed.';
+              return refresh();
+            }
+            const count = state.collapsed.size;
+            state.collapsed.clear();
+            state.message = `Expanded ${count} section(s).`;
+            recomputeVisibleKeys();
+            return refresh();
+          }
           // Collapse / expand the section containing the focused key.
           const focusedKey = state.visibleKeys[state.rowIdx];
           if (!focusedKey) return;
@@ -904,7 +937,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
             state.message = `Expanded "${sectionKey === '__other__' ? '(other)' : sectionKey}".`;
           } else {
             state.collapsed.add(sectionKey);
-            state.message = `Collapsed "${sectionKey === '__other__' ? '(other)' : sectionKey}".`;
+            state.message = `Collapsed "${sectionKey === '__other__' ? '(other)' : sectionKey}". Press Shift-C to expand all.`;
           }
           recomputeVisibleKeys();
           return refresh();
@@ -1112,12 +1145,12 @@ function refreshFooter(
   } else {
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
-      `↑↓←→ move · Tab files · e edit · a add · d del · n new · c collapse · ` +
-      `^Z undo · ^S save · / filter · ?/ß help · q quit${dirtyLabel}`;
+      `↑↓←→ move · Tab files · e edit · a add · d del · n new · ` +
+      `c collapse · ^Z undo · ^S save · / filter · ?/ß help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
       `g group: ${state.grouping} · ` +
-      `s secrets: ${state.showSecrets ? 'shown' : 'masked'}`;
+      `s/^T secrets: ${state.showSecrets ? 'shown' : 'masked'}`;
   }
   filterInput.visible = state.mode === 'filter';
   status.content = state.message ?? '';
