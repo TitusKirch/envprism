@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseEnv } from '../src/core/parse.ts';
+import { parseEnv } from '@/core/parse.ts';
 
 describe('parseEnv', () => {
   it('parses simple key=value', () => {

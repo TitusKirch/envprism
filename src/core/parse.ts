@@ -1,4 +1,4 @@
-import type { EnvEntry, EnvFile, KvEntry, Quoting } from './types.ts';
+import type { EnvEntry, EnvFile, KvEntry, Quoting } from '@/core/types.ts';
 
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

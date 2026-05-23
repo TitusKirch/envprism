@@ -91,6 +91,82 @@ bunx envprism diff --check; echo $?  # exits 1 if any file drifts from base
 
 Inside the TUI, press `?` for the full keybinding reference.
 
+## ⚙️ Configuration
+
+envprism runs zero-config. To tune defaults, drop an `envprism.config.{ts,js,mjs,json}` in your project — manage it with the `config` commands:
+
+```bash
+bunx envprism config init     # scaffold envprism.config.ts (--force to overwrite)
+bunx envprism config path     # print the resolved config file (or note defaults)
+bunx envprism config show     # print the effective merged config as JSON
+bunx envprism config edit     # open it in $EDITOR (creates one in cwd if absent)
+```
+
+**Discovery & precedence.** The config file is resolved by walking **up from the current working directory** (not from the scanned `--paths` directory). Override the location with the `--config <path>` flag or the `ENVPRISM_CONFIG` env var. For any individual setting, a CLI flag beats the config file, which beats the built-in default (`flag > config > default`).
+
+For type-safe authoring:
+
+```ts
+// envprism.config.ts
+import { defineEnvprismConfig } from 'envprism/config';
+
+export default defineEnvprismConfig({
+  heuristics: { secretTokensExtra: ['WEBHOOK'], grouping: 'banner' },
+  tui: { theme: { fgSection: '#5fd7d7' } }
+});
+```
+
+List fields come in two flavours: the base field (e.g. `secretTokens`) **replaces** the built-in list, while the `…Extra` variant (e.g. `secretTokensExtra`) **appends** to it.
+
+### `discovery`
+
+| Option              | Default                | What it does                                            |
+| :------------------ | :--------------------- | :------------------------------------------------------ |
+| `paths`             | `['.']`                | Directories scanned when none are passed on the CLI.    |
+| `skipSuffixes`      | `['.swp', '~', '.bak']`| Filename suffixes to skip (replaces the default list).  |
+| `skipSuffixesExtra` | `[]`                   | Suffixes appended to `skipSuffixes`.                    |
+| `exampleFirst`      | `true`                 | Sort `.env.example` first in the discovered file order. |
+
+### `base`
+
+| Option     | Default          | What it does                                                       |
+| :--------- | :--------------- | :----------------------------------------------------------------- |
+| `name`     | `'.env.example'` | Filename used as the diff base when present (overridden by `--base`). |
+| `priority` | `[]`             | Ordered basenames tried as base before falling back to the first file. |
+
+Base resolution order: `--base` flag → `base.name` → `base.priority` (in order) → first discovered file.
+
+### `heuristics`
+
+| Option              | Default                          | What it does                                              |
+| :------------------ | :------------------------------- | :-------------------------------------------------------- |
+| `secretTokens`      | `SECRET, TOKEN, PASSWORD, …`     | Key segments that mark a value as a secret (replaces).    |
+| `secretTokensExtra` | `[]`                             | Secret tokens appended to the defaults.                   |
+| `placeholders`      | `todo, fixme, changeme, …`       | Regex atoms flagging placeholder values (replaces).       |
+| `placeholdersExtra` | `[]`                             | Placeholder atoms appended to the defaults.               |
+| `grouping`          | `'auto'`                         | TUI grouping: `auto` (banner if present, else prefix), `banner`, or `prefix`. |
+
+### `diff`
+
+| Option          | Default | What it does                                          |
+| :-------------- | :------ | :---------------------------------------------------- |
+| `json`          | `false` | Emit JSON instead of the text table by default.       |
+| `checkExitCode` | `1`     | Exit code used by `diff --check` when files drift.    |
+
+### `tui`
+
+| Option        | Default | What it does                                                    |
+| :------------ | :------ | :-------------------------------------------------------------- |
+| `theme`       | `{}`    | Partial `#rrggbb` overrides for the palette (see keys below).   |
+| `layout`      | —       | Column/sidebar widths: `keyColWidth` (22), `valueColMin` (18), `sidebarWidth` (30), `rowGap` (0), `cellPadX` (1). |
+| `undoLimit`   | `50`    | Max entries in the undo stack.                                  |
+| `maskSecrets` | `true`  | Start with secret-suspect values masked (toggle in-app with `Ctrl-T`). |
+
+Theme keys (all optional hex strings): `fg`, `fgDim`, `fgHeader`, `fgBase`, `fgSection`, `differs`, `extra`, `placeholder`, `modified`, `fgDirty`, `missing`, `focusBg`. Invalid hex values are ignored with a warning and fall back to the default.
+
+> [!NOTE]
+> The TypeScript types exported from `envprism/config` (`EnvprismUserConfig` and friends) are the canonical, always-current reference. A worked example lives in [`examples/envprism.config.ts`](examples/envprism.config.ts).
+
 ## 🤝 Contributing
 
 PRs welcome. Conventional Commits required (enforced via commitlint). Husky runs the project's linters/formatters on `git commit`.

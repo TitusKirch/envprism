@@ -1,5 +1,5 @@
-import { computeSections } from './sections.ts';
-import type { EnvFile, KvEntry } from './types.ts';
+import { computeSections } from '@/core/sections.ts';
+import type { EnvFile, KvEntry } from '@/core/types.ts';
 
 export type CellState = 'same' | 'differs' | 'missing' | 'extra' | 'base';
 

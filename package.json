@@ -41,6 +41,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs"
+    },
+    "./config": {
+      "types": "./dist/config/define.d.ts",
+      "import": "./dist/config/define.mjs"
     }
   },
   "publishConfig": {
@@ -66,8 +70,10 @@
   },
   "dependencies": {
     "@opentui/core": "^0.2.15",
+    "c12": "^3.0.0",
     "citty": "^0.1.6",
     "consola": "^3.4.0",
+    "defu": "^6.1.4",
     "pathe": "^2.0.0"
   },
   "devDependencies": {

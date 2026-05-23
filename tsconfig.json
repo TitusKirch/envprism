@@ -20,7 +20,12 @@
     "outDir": "dist",
     "rootDir": ".",
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@tui/*": ["./src/tui/*"],
+      "@test/*": ["./tests/*"]
+    }
   },
   "include": ["src", "tests", "vite.config.ts"],
   "exclude": ["node_modules", "dist"]

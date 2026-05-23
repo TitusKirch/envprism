@@ -1,8 +1,9 @@
 import { defineCommand } from 'citty';
-import { diffCommand } from './commands/diff.ts';
-import { runTui, tuiCommand } from './commands/tui.ts';
+import { configCommand } from '@/commands/config/index.ts';
+import { diffCommand } from '@/commands/diff.ts';
+import { runTui, tuiCommand } from '@/commands/tui.ts';
 
-const SUBCOMMANDS = new Set(['tui', 'diff']);
+const SUBCOMMANDS = new Set(['tui', 'diff', 'config']);
 
 export const rootCommand = defineCommand({
   meta: {
@@ -12,7 +13,8 @@ export const rootCommand = defineCommand({
   },
   subCommands: {
     tui: tuiCommand,
-    diff: diffCommand
+    diff: diffCommand,
+    config: configCommand
   },
   // citty 0.1.6 invokes the root `run` after a matched subcommand returns,
   // so guard against double-execution by bailing when the first positional

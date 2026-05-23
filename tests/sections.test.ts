@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseEnv } from '../src/core/parse.ts';
-import { computeSections } from '../src/core/sections.ts';
+import { parseEnv } from '@/core/parse.ts';
+import { computeSections } from '@/core/sections.ts';
 
 describe('computeSections', () => {
   it('picks up inline === banners', () => {

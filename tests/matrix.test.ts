@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildMatrix } from '../src/core/matrix.ts';
-import { parseEnv } from '../src/core/parse.ts';
+import { buildMatrix } from '@/core/matrix.ts';
+import { parseEnv } from '@/core/parse.ts';
 
 describe('buildMatrix', () => {
   const base = parseEnv(

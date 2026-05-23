@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { computeDiff, formatDiffText } from '../src/core/diff.ts';
-import { buildMatrix } from '../src/core/matrix.ts';
-import { parseEnv } from '../src/core/parse.ts';
+import { computeDiff, formatDiffText } from '@/core/diff.ts';
+import { buildMatrix } from '@/core/matrix.ts';
+import { parseEnv } from '@/core/parse.ts';
 
 const base = parseEnv(
   ['APP_NAME=envprism', 'PORT=3000', 'DATABASE_URL=postgres://x'].join('\n') +

@@ -4,3 +4,8 @@ node_modules
 .vscode
 dist
 coverage
+
+# Editor swap / backup files
+*.swp
+*.swo
+*~

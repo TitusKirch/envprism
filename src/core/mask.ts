@@ -18,7 +18,10 @@ const SECRET_TOKENS = [
  * keys whose final segment is `ID` (e.g. `API_KEY_ID` is an identifier, not
  * a secret).
  */
-export function isSecretKey(key: string): boolean {
+export function isSecretKey(
+  key: string,
+  tokens: readonly string[] = SECRET_TOKENS
+): boolean {
   const upper = key.toUpperCase();
   const segments = upper.split('_').filter(Boolean);
   if (segments.length === 0) return false;
@@ -27,7 +30,7 @@ export function isSecretKey(key: string): boolean {
   if (segments.includes('PUBLIC')) return false;
 
   return segments.some((seg) =>
-    SECRET_TOKENS.some((token) => seg === token || seg.endsWith(token))
+    tokens.some((token) => seg === token || seg.endsWith(token))
   );
 }
 
