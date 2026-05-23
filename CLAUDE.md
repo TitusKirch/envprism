@@ -30,7 +30,7 @@ src/
   commands/
     diff.ts              text / JSON / --check diff output
     tui.ts               default command; dynamic-imports tui/app.ts
-    init.ts              scaffolds envprism.config.ts (wx unless --force)
+    config/              `config` group: init / path / show / edit
   config/
     schema.ts            config types + DEFAULT_CONFIG (canonical defaults)
     define.ts            defineEnvprismConfig + types — `envprism/config` entry (RGBA-free)

@@ -3,7 +3,8 @@ import { defineCommand } from 'citty';
 import consola from 'consola';
 import { join, resolve } from 'pathe';
 
-const TEMPLATE = `/**
+/** Scaffold template, shared with `config edit` for first-time creation. */
+export const CONFIG_TEMPLATE = `/**
  * envprism configuration.
  *
  * For type-safe authoring, install envprism and switch to:
@@ -68,7 +69,7 @@ export const initCommand = defineCommand({
     const dir = resolve(typeof args.out === 'string' ? args.out : '.');
     const target = join(dir, 'envprism.config.ts');
     try {
-      await writeFile(target, TEMPLATE, {
+      await writeFile(target, CONFIG_TEMPLATE, {
         encoding: 'utf8',
         flag: args.force ? 'w' : 'wx'
       });

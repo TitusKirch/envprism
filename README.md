@@ -93,10 +93,13 @@ Inside the TUI, press `?` for the full keybinding reference.
 
 ## ⚙️ Configuration
 
-envprism runs zero-config. To tune defaults, drop an `envprism.config.{ts,js,mjs,json}` in your project — scaffold one with documented defaults:
+envprism runs zero-config. To tune defaults, drop an `envprism.config.{ts,js,mjs,json}` in your project — manage it with the `config` commands:
 
 ```bash
-bunx envprism init            # writes envprism.config.ts (use --force to overwrite)
+bunx envprism config init     # scaffold envprism.config.ts (--force to overwrite)
+bunx envprism config path     # print the resolved config file (or note defaults)
+bunx envprism config show     # print the effective merged config as JSON
+bunx envprism config edit     # open it in $EDITOR (creates one in cwd if absent)
 ```
 
 **Discovery & precedence.** The config file is resolved by walking **up from the current working directory** (not from the scanned `--paths` directory). Override the location with the `--config <path>` flag or the `ENVPRISM_CONFIG` env var. For any individual setting, a CLI flag beats the config file, which beats the built-in default (`flag > config > default`).
