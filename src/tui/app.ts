@@ -78,48 +78,85 @@ const ROW_GAP = 0;
 const CELL_PAD_X = 1;
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-const HELP_TEXT = [
-  'Panes',
-  '  Tab               Switch focus between matrix and files sidebar',
-  '  ← (at leftmost)   Hop from matrix into the sidebar',
-  '',
-  'Navigation (matrix)',
-  '  ↑ ↓ ← →           Move focused cell',
-  '  Mouse wheel       Scroll the matrix (both axes)',
-  '',
-  'Files sidebar (Tab to enter)',
-  '  ↑ ↓               Move sidebar selection',
-  '  Space             Toggle file enabled (hides from matrix)',
-  '  b                 Set selected file as the base',
-  '  Tab / →           Back to the matrix',
-  '',
-  'Editing — operates on the focused (key, file) cell',
-  '  e  /  Enter       Edit the cell value',
-  '  a                 Add a new key to the focused file',
-  '  d                 Delete the key from the focused file',
-  '  n                 Create a new env file (sibling of the base)',
-  '  Ctrl-Z            Undo last edit/add/delete',
-  '  Ctrl-S            Write every dirty file to disk',
-  '',
-  'View',
-  '  /                 Filter keys (Esc clears, Enter keeps)',
-  '  v                 Toggle: show all keys ↔ only drifting keys',
-  '  g                 Toggle: group by key prefix ↔ comment banner',
-  '',
-  'Help & exit',
-  '  ?                 Toggle this overlay',
-  '  q                 Quit (press twice if there are unsaved changes)',
-  '  Ctrl-C            Force quit without confirmation',
-  '',
-  'Sidebar markers   ▶ pane focus · ● dirty · ★ base · ▸ matrix col · ✓/☐ enabled',
-  '',
-  'Symbols in cells',
-  '  ≠ value           Differs from base',
-  '  ✗ missing         Key is in base but missing here',
-  '  ★ value           Key is here but not in base',
-  '  —                 Present but empty',
-  '  •••• (N)          Secret-suspect value masked by length'
-].join('\n');
+type HelpLine =
+  | { kind: 'header'; text: string }
+  | { kind: 'entry'; text: string }
+  | { kind: 'legend'; symbol: string; color: RGBA; description: string }
+  | { kind: 'blank' };
+
+function buildHelpLines(): HelpLine[] {
+  return [
+    { kind: 'header', text: 'Panes' },
+    {
+      kind: 'entry',
+      text: '  Tab               Switch matrix ↔ files sidebar'
+    },
+    {
+      kind: 'entry',
+      text: '  ← (leftmost col)  Hop from matrix into the sidebar'
+    },
+    { kind: 'blank' },
+    { kind: 'header', text: 'Matrix navigation' },
+    { kind: 'entry', text: '  ↑ ↓ ← →           Move focused cell' },
+    { kind: 'entry', text: '  Mouse wheel       Scroll (both axes)' },
+    { kind: 'blank' },
+    { kind: 'header', text: 'Files sidebar' },
+    { kind: 'entry', text: '  ↑ ↓               Move selection' },
+    { kind: 'entry', text: '  Space             Enable / disable file' },
+    { kind: 'entry', text: '  b                 Make selected file the base' },
+    { kind: 'entry', text: '  Tab / →           Back to matrix' },
+    { kind: 'blank' },
+    { kind: 'header', text: 'Editing' },
+    { kind: 'entry', text: '  e / Enter         Edit cell value' },
+    { kind: 'entry', text: '  a                 Add key to focused file' },
+    { kind: 'entry', text: '  d                 Delete key from focused file' },
+    { kind: 'entry', text: '  n                 New env file next to base' },
+    { kind: 'entry', text: '  Ctrl-Z            Undo last edit/add/delete' },
+    { kind: 'entry', text: '  Ctrl-S            Write all dirty files' },
+    { kind: 'blank' },
+    { kind: 'header', text: 'View' },
+    { kind: 'entry', text: '  /                 Filter keys' },
+    { kind: 'entry', text: '  v                 All keys ↔ drift-only' },
+    { kind: 'entry', text: '  g                 Group by prefix ↔ banner' },
+    { kind: 'blank' },
+    { kind: 'header', text: 'Help & exit' },
+    { kind: 'entry', text: '  ? / ß             Toggle this overlay' },
+    { kind: 'entry', text: '  q                 Quit (twice if dirty)' },
+    { kind: 'entry', text: '  Ctrl-C            Force quit' },
+    { kind: 'blank' },
+    { kind: 'header', text: 'Cell symbols' },
+    {
+      kind: 'legend',
+      symbol: '≠ value',
+      color: RGBA.fromHex('#ffd866'),
+      description: 'differs from base'
+    },
+    {
+      kind: 'legend',
+      symbol: '✗ missing',
+      color: RGBA.fromHex('#ff6b6b'),
+      description: 'key in base but not here'
+    },
+    {
+      kind: 'legend',
+      symbol: '★ value',
+      color: RGBA.fromHex('#c792ea'),
+      description: 'key here but not in base'
+    },
+    {
+      kind: 'legend',
+      symbol: '—',
+      color: RGBA.fromHex('#cccccc'),
+      description: 'present but empty'
+    },
+    {
+      kind: 'legend',
+      symbol: '•••• (N)',
+      color: RGBA.fromHex('#cccccc'),
+      description: 'secret-suspect, masked by length'
+    }
+  ];
+}
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
@@ -299,30 +336,27 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   promptBox.add(promptHint);
   renderer.root.add(promptBox);
 
-  // Floating help overlay. Hidden until '?' opens it.
+  // Floating help overlay. Hidden until '?' / 'ß' opens it.
   const helpBox = new BoxRenderable(renderer, {
     id: 'help-overlay',
     position: 'absolute',
     top: 2,
-    left: 4,
-    right: 4,
-    bottom: 2,
+    left: '15%',
+    right: '15%',
+    height: 40,
     zIndex: 100,
     border: true,
     borderStyle: 'rounded',
-    title: ' Keybindings ',
+    title: ' Keybindings — press ? or Esc to close ',
     paddingX: 2,
     paddingY: 1,
     visible: false,
-    backgroundColor: RGBA.fromHex('#1a1a1a')
+    backgroundColor: RGBA.fromHex('#1a1a1a'),
+    flexDirection: 'column'
   });
-  helpBox.add(
-    new TextRenderable(renderer, {
-      id: 'help-text',
-      content: HELP_TEXT,
-      fg: COLORS.fg
-    })
-  );
+  for (const [i, line] of buildHelpLines().entries()) {
+    helpBox.add(buildHelpRow(renderer, `help-${i}`, line));
+  }
   renderer.root.add(helpBox);
 
   // --- State helpers ---
@@ -658,7 +692,12 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       sequence?: string;
     }) => {
       if (state.helpOpen) {
-        if (key.name === 'escape' || key.sequence === '?' || key.name === 'q') {
+        if (
+          key.name === 'escape' ||
+          key.sequence === '?' ||
+          key.sequence === 'ß' ||
+          key.name === 'q'
+        ) {
           state.helpOpen = false;
           refresh();
         }
@@ -748,7 +787,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
             return setBase();
         }
         if (key.sequence === ' ') return toggleEnabled();
-        if (key.sequence === '?') {
+        if (key.sequence === '?' || key.sequence === 'ß') {
           state.helpOpen = true;
           return refresh();
         }
@@ -821,7 +860,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         return;
       }
 
-      if (key.sequence === '?') {
+      if (key.sequence === '?' || key.sequence === 'ß') {
         state.helpOpen = true;
         refresh();
       }
@@ -856,11 +895,13 @@ function refreshSidebar(
     const matrixIdx = matrix.files.indexOf(file);
     const isFocusCol = isEnabled && matrixIdx === state.colIdx;
     const isPaneFocus = state.pane === 'sidebar' && i === state.sidebarIdx;
+    // Space-separated so adjacent glyphs (★ and ▸ in particular) don't blur
+    // into each other in narrow / variable-width fonts.
     const marker =
-      `${isPaneFocus ? '▶' : ' '}` +
-      `${isDirty ? '●' : ' '}` +
-      `${isBase ? '★' : ' '}` +
-      `${isFocusCol ? '▸' : ' '}` +
+      `${isPaneFocus ? '▶' : ' '} ` +
+      `${isDirty ? '●' : ' '} ` +
+      `${isBase ? '★' : ' '} ` +
+      `${isFocusCol ? '▸' : ' '} ` +
       `${isEnabled ? '✓' : '☐'}`;
     const fg = !isEnabled
       ? COLORS.fgDim
@@ -973,7 +1014,7 @@ function refreshFooter(
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
       `↑↓←→ move · Tab files · e edit · a add · d del · n new · ` +
-      `^Z undo · ^S save · / filter · ? help · q quit${dirtyLabel}`;
+      `^Z undo · ^S save · / filter · ?/ß help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
       `g group: ${state.grouping}`;
@@ -997,16 +1038,18 @@ function refreshPrompt(
 
   promptBox.title = promptLabelText(state.prompt);
 
-  // Rebuild the body. Edit / add-value get a per-file context table with the
-  // input slotted into the focused file's row. add-key and new-file just
-  // render the input alone.
+  // Rebuild the body. Edit / add-value render a per-file table with the
+  // input replacing the focused file's value cell — plus an arrow so the
+  // old → new transition is explicit. add-key and new-file render the input
+  // alone (no per-file context yet).
   removeAllChildren(promptBody);
   const p = state.prompt;
   if (p.kind === 'edit' || p.kind === 'add-value') {
-    const labelWidth = Math.min(
+    const nameWidth = Math.min(
       26,
-      Math.max(...matrix.files.map((f) => basename(f.path).length + 4))
+      Math.max(...matrix.files.map((f) => basename(f.path).length + 2))
     );
+    const valueWidth = 22;
     const secret = isSecretKey(p.key);
     promptBox.height = Math.min(20, 4 + matrix.files.length + 2);
     for (const file of matrix.files) {
@@ -1017,34 +1060,46 @@ function refreshPrompt(
         height: 1,
         flexShrink: 0
       });
-      const label = `${isTarget ? '▸ ' : '  '}${basename(file.path)}`;
+      // Column 1: name + focus marker
       row.add(
         new TextRenderable(renderer, {
-          id: `prompt-row-${file.path}-label`,
-          content: label.padEnd(labelWidth),
+          id: `prompt-row-${file.path}-name`,
+          content: `${isTarget ? '▸' : ' '} ${basename(file.path)}`.padEnd(
+            nameWidth
+          ),
           fg: isTarget ? COLORS.fgBase : COLORS.fgDim,
           height: 1,
           wrapMode: 'none'
         })
       );
+      // Column 2: current value (read-only). For the focused row this shows
+      // the value *before* the edit so the user keeps the original in sight
+      // while typing the replacement into the input.
+      const entry = findKvEntry(file, p.key);
+      const current = entry
+        ? formatValue(entry.value, secret) || '—'
+        : '✗ missing';
+      row.add(
+        new TextRenderable(renderer, {
+          id: `prompt-row-${file.path}-value`,
+          content: truncate(current, valueWidth - 1).padEnd(valueWidth),
+          fg: !entry ? COLORS.missing : isTarget ? COLORS.fg : COLORS.fgDim,
+          height: 1,
+          wrapMode: 'none'
+        })
+      );
+      // Column 3: arrow + input (focused only).
       if (isTarget) {
-        // The single shared InputRenderable goes here so its state survives
-        // across rebuilds.
-        row.add(promptInput);
-      } else {
-        const entry = findKvEntry(file, p.key);
-        const text = entry
-          ? renderCellText('same', entry.value, secret)
-          : '✗ missing';
         row.add(
           new TextRenderable(renderer, {
-            id: `prompt-row-${file.path}-value`,
-            content: text,
-            fg: entry ? COLORS.fg : COLORS.missing,
+            id: `prompt-row-${file.path}-arrow`,
+            content: '→ ',
+            fg: COLORS.fgDim,
             height: 1,
             wrapMode: 'none'
           })
         );
+        row.add(promptInput);
       }
       promptBody.add(row);
     }
@@ -1143,6 +1198,60 @@ function appendKv(file: EnvFile, key: string, value: string): KvEntry {
   // sane; we make sure the file ends with a newline so editors don't complain.
   file.trailingNewline = true;
   return entry;
+}
+
+function buildHelpRow(
+  renderer: CliRenderer,
+  id: string,
+  line: HelpLine
+): BoxRenderable {
+  const row = new BoxRenderable(renderer, {
+    id,
+    flexDirection: 'row',
+    height: 1,
+    flexShrink: 0
+  });
+  if (line.kind === 'header') {
+    row.add(
+      new TextRenderable(renderer, {
+        id: `${id}-t`,
+        content: line.text,
+        fg: COLORS.fgSection,
+        wrapMode: 'none',
+        height: 1
+      })
+    );
+  } else if (line.kind === 'entry') {
+    row.add(
+      new TextRenderable(renderer, {
+        id: `${id}-t`,
+        content: line.text,
+        fg: COLORS.fg,
+        wrapMode: 'none',
+        height: 1
+      })
+    );
+  } else if (line.kind === 'legend') {
+    row.add(
+      new TextRenderable(renderer, {
+        id: `${id}-sym`,
+        content: `  ${line.symbol.padEnd(12)}`,
+        fg: line.color,
+        wrapMode: 'none',
+        height: 1
+      })
+    );
+    row.add(
+      new TextRenderable(renderer, {
+        id: `${id}-desc`,
+        content: line.description,
+        fg: COLORS.fgDim,
+        wrapMode: 'none',
+        height: 1
+      })
+    );
+  }
+  return row;
 }
 
 function buildSectionDivider(
