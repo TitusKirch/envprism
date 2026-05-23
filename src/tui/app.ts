@@ -57,6 +57,7 @@ interface State {
   sidebarIdx: number;
   enabled: Set<EnvFile>;
   showSecrets: boolean;
+  collapsed: Set<string>;
 }
 
 const COLORS = {
@@ -69,8 +70,18 @@ const COLORS = {
   differs: RGBA.fromHex('#ffd866'),
   missing: RGBA.fromHex('#ff6b6b'),
   extra: RGBA.fromHex('#c792ea'),
+  placeholder: RGBA.fromHex('#ffa05c'),
   focusBg: RGBA.fromHex('#3a3f4b')
 };
+
+const PLACEHOLDER_RE =
+  /^(todo|fixme|changeme|placeholder|tbd|x{3,}|your[_-]?(secret|key|token|password|api[_-]?key)(_here)?|replace[_-]?me)$/i;
+
+function isPlaceholderValue(value: string): boolean {
+  const v = value.trim();
+  if (v.length === 0) return false;
+  return PLACEHOLDER_RE.test(v);
+}
 
 const KEY_COL_WIDTH = 22;
 const VALUE_COL_MIN = 18;
@@ -114,6 +125,10 @@ function buildHelpLines(): HelpLine[] {
     { kind: 'entry', text: '  n                 New env file next to base' },
     { kind: 'entry', text: '  Ctrl-Z            Undo last edit/add/delete' },
     { kind: 'entry', text: '  Ctrl-S            Write all dirty files' },
+    {
+      kind: 'entry',
+      text: '  c                 Collapse / expand focused section'
+    },
     { kind: 'blank' },
     { kind: 'header', text: 'View' },
     { kind: 'entry', text: '  /                 Filter keys' },
@@ -147,15 +162,15 @@ function buildHelpLines(): HelpLine[] {
     },
     {
       kind: 'legend',
-      symbol: '—',
-      color: RGBA.fromHex('#cccccc'),
-      description: 'present but empty'
-    },
-    {
-      kind: 'legend',
       symbol: '•••• (N)',
       color: RGBA.fromHex('#cccccc'),
       description: 'secret-suspect, masked by length'
+    },
+    {
+      kind: 'legend',
+      symbol: '⚠ TODO',
+      color: RGBA.fromHex('#ffa05c'),
+      description: 'placeholder value detected (TODO, CHANGEME, xxx, …)'
     }
   ];
 }
@@ -185,8 +200,12 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     pane: 'matrix',
     sidebarIdx: 0,
     enabled: new Set(allFiles),
-    showSecrets: false
+    showSecrets: false,
+    collapsed: new Set()
   };
+
+  const SECTION_COLLAPSE_KEY = (name: string | undefined) =>
+    name ?? '__other__';
 
   const pushUndo = (entry: UndoEntry) => {
     state.undo.push(entry);
@@ -328,15 +347,31 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     id: 'prompt-input',
     placeholder: ''
   });
-  const promptHint = new TextRenderable(renderer, {
-    id: 'prompt-hint',
-    content: 'Enter · confirm    Esc · cancel',
+  const promptHintConfirm = new TextRenderable(renderer, {
+    id: 'prompt-hint-confirm',
+    content: 'Enter · confirm',
+    fg: COLORS.fgDim,
+    height: 1,
+    marginTop: 2
+  });
+  const promptHintCancel = new TextRenderable(renderer, {
+    id: 'prompt-hint-cancel',
+    content: 'Esc · cancel',
+    fg: COLORS.fgDim,
+    height: 1,
+    marginTop: 1
+  });
+  const promptHintToggle = new TextRenderable(renderer, {
+    id: 'prompt-hint-toggle',
+    content: 'Ctrl-T · show/mask secrets',
     fg: COLORS.fgDim,
     height: 1,
     marginTop: 1
   });
   promptBox.add(promptBody);
-  promptBox.add(promptHint);
+  promptBox.add(promptHintConfirm);
+  promptBox.add(promptHintCancel);
+  promptBox.add(promptHintToggle);
   renderer.root.add(promptBox);
 
   // Full-screen dim layer drawn below the prompt and help overlays so the
@@ -387,6 +422,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     const filtered = matrix.keys.filter((k) => {
       if (!matchesFilter(k, state.filter)) return false;
       if (state.driftOnly && !keyDrifts(matrix, k)) return false;
+      if (state.collapsed.has(SECTION_COLLAPSE_KEY(sectionOf(k)))) return false;
       return true;
     });
     state.visibleKeys =
@@ -487,13 +523,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       const key = state.visibleKeys[state.rowIdx];
       const file = matrix.files[state.colIdx];
       if (!key || !file) return;
+      // Edit works on missing cells too — on commit we either update the
+      // existing entry or append a new one.
       const entry = findKvEntry(file, key);
-      if (!entry) {
-        state.message = `Cannot edit "${key}" in ${basename(file.path)}: missing. Press 'a' to add.`;
-        refresh();
-        return;
-      }
-      openPrompt({ kind: 'edit', key, file }, entry.value, 'New value');
+      openPrompt({ kind: 'edit', key, file }, entry?.value ?? '', 'value');
     };
 
     const startAdd = () => {
@@ -601,24 +634,31 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       const raw = promptInput.value;
 
       if (p.kind === 'edit') {
-        const entry = findKvEntry(p.file, p.key);
-        if (entry) {
+        const existing = findKvEntry(p.file, p.key);
+        if (existing) {
           pushUndo({
             kind: 'edit',
             file: p.file,
-            entry,
-            prevValue: entry.value,
-            prevRaw: entry.raw
+            entry: existing,
+            prevValue: existing.value,
+            prevRaw: existing.raw
           });
-          entry.value = raw;
-          rebuildKvLine(entry);
+          existing.value = raw;
+          rebuildKvLine(existing);
           state.dirty.add(p.file);
           rebuildMatrix();
           closePrompt(
             `Edited ${p.key} in ${basename(p.file.path)}. Ctrl-S to save.`
           );
         } else {
-          closePrompt(`Lost the entry for ${p.key} — try again.`);
+          // Missing cell: add the key with the typed value.
+          const added = appendKv(p.file, p.key, raw);
+          pushUndo({ kind: 'add-kv', file: p.file, entry: added });
+          state.dirty.add(p.file);
+          rebuildMatrix();
+          closePrompt(
+            `Added ${p.key} to ${basename(p.file.path)}. Ctrl-S to save.`
+          );
         }
         return;
       }
@@ -727,6 +767,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       if (state.mode === 'prompt') {
         if (key.name === 'escape') cancelPrompt();
         else if (key.name === 'return') commitPrompt();
+        else if (key.ctrl && key.name === 't') {
+          state.showSecrets = !state.showSecrets;
+          refresh();
+        }
         return;
       }
 
@@ -865,6 +909,21 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
             return refresh();
           }
           return;
+        case 'c': {
+          // Collapse / expand the section containing the focused key.
+          const focusedKey = state.visibleKeys[state.rowIdx];
+          if (!focusedKey) return;
+          const sectionKey = sectionOf(focusedKey) ?? '__other__';
+          if (state.collapsed.has(sectionKey)) {
+            state.collapsed.delete(sectionKey);
+            state.message = `Expanded "${sectionKey === '__other__' ? '(other)' : sectionKey}".`;
+          } else {
+            state.collapsed.add(sectionKey);
+            state.message = `Collapsed "${sectionKey === '__other__' ? '(other)' : sectionKey}".`;
+          }
+          recomputeVisibleKeys();
+          return refresh();
+        }
         case 'g': {
           const prevKey = state.visibleKeys[state.rowIdx];
           state.grouping = state.grouping === 'banner' ? 'prefix' : 'banner';
@@ -975,17 +1034,36 @@ function refreshMatrix(
     ])
   );
 
-  let lastSection: string | undefined;
-  for (let r = 0; r < state.visibleKeys.length; r++) {
-    const key = state.visibleKeys[r]!;
+  // Walk every key (including those hidden by a collapsed section) so we can
+  // render section dividers for collapsed groups too. Within an expanded
+  // group we render the cell rows; within a collapsed one we render nothing
+  // beyond the header.
+  const totalWidth = KEY_COL_WIDTH + valueColWidth * matrix.files.length;
+  const sectionStats = sectionMetadata(matrix, sectionOf, state);
+  const seenSection = new Set<string>();
+
+  let r = 0;
+  for (const key of orderedKeys(matrix, state, sectionOf)) {
     const section = sectionOf(key);
-    if (section !== lastSection) {
-      const totalWidth = KEY_COL_WIDTH + valueColWidth * matrix.files.length;
+    const sectionKey = section ?? '__other__';
+    if (!seenSection.has(sectionKey)) {
+      seenSection.add(sectionKey);
+      const meta = sectionStats.get(sectionKey) ?? { drift: 0, total: 0 };
       scrollBox.content.add(
-        buildSectionDivider(renderer, `section-${r}`, section, totalWidth)
+        buildSectionDivider(
+          renderer,
+          `section-${sectionKey}`,
+          section,
+          totalWidth,
+          {
+            drift: meta.drift,
+            total: meta.total,
+            collapsed: state.collapsed.has(sectionKey)
+          }
+        )
       );
-      lastSection = section;
     }
+    if (state.collapsed.has(sectionKey)) continue;
     const secret = isSecretKey(key) && !state.showSecrets;
     const cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[] = [
       { text: key, fg: COLORS.fg, width: KEY_COL_WIDTH }
@@ -995,14 +1073,20 @@ function refreshMatrix(
       const cell = matrix.cell(key, file);
       const focused =
         state.mode === 'browse' && r === state.rowIdx && c === state.colIdx;
+      const placeholder =
+        cell.value !== undefined && isPlaceholderValue(cell.value);
+      const text = placeholder
+        ? `⚠ ${cell.value}`
+        : renderCellText(cell.state, cell.value, secret);
       cells.push({
-        text: renderCellText(cell.state, cell.value, secret),
-        fg: stateColor(cell.state),
+        text,
+        fg: placeholder ? COLORS.placeholder : stateColor(cell.state),
         width: valueColWidth,
         bg: focused ? COLORS.focusBg : undefined
       });
     }
     scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
+    r++;
   }
 
   // Keep the focused row visible when navigating up/down past the viewport.
@@ -1042,7 +1126,7 @@ function refreshFooter(
   } else {
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
-      `↑↓←→ move · Tab files · e edit · a add · d del · n new · ` +
+      `↑↓←→ move · Tab files · e edit · a add · d del · n new · c collapse · ` +
       `^Z undo · ^S save · / filter · ?/ß help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
@@ -1081,7 +1165,8 @@ function refreshPrompt(
       26,
       Math.max(...matrix.files.map((f) => basename(f.path).length + 2))
     );
-    promptBox.height = Math.min(20, 5 + matrix.files.length + 2);
+    // input(1) + table header+margin(2) + rows(n) + 3 hint lines (3+2+2) + box chrome(4)
+    promptBox.height = Math.min(24, 14 + matrix.files.length);
 
     promptBody.add(
       new TextRenderable(renderer, {
@@ -1114,9 +1199,7 @@ function refreshPrompt(
         })
       );
       const entry = findKvEntry(file, p.key);
-      const current = entry
-        ? formatValue(entry.value, secret) || '—'
-        : '✗ missing';
+      const current = entry ? formatValue(entry.value, secret) : '✗ missing';
       row.add(
         new TextRenderable(renderer, {
           id: `prompt-row-${file.path}-value`,
@@ -1129,7 +1212,7 @@ function refreshPrompt(
       promptBody.add(row);
     }
   } else {
-    promptBox.height = 6;
+    promptBox.height = 12;
   }
 }
 
@@ -1175,6 +1258,36 @@ function groupByPrefix(keys: string[]): string[] {
   }
   if (groups.has(OTHER)) order.push(OTHER);
   return order.flatMap((p) => groups.get(p)!);
+}
+
+function orderedKeys(
+  matrix: Matrix,
+  state: State,
+  sectionOf: (key: string) => string | undefined
+): string[] {
+  void sectionOf;
+  const filtered = matrix.keys.filter((k) => {
+    if (!matchesFilter(k, state.filter)) return false;
+    if (state.driftOnly && !keyDrifts(matrix, k)) return false;
+    return true;
+  });
+  return state.grouping === 'prefix' ? groupByPrefix(filtered) : filtered;
+}
+
+function sectionMetadata(
+  matrix: Matrix,
+  sectionOf: (key: string) => string | undefined,
+  state: State
+): Map<string, { drift: number; total: number }> {
+  const out = new Map<string, { drift: number; total: number }>();
+  for (const key of orderedKeys(matrix, state, sectionOf)) {
+    const k = sectionOf(key) ?? '__other__';
+    const bucket = out.get(k) ?? { drift: 0, total: 0 };
+    bucket.total += 1;
+    if (keyDrifts(matrix, key)) bucket.drift += 1;
+    out.set(k, bucket);
+  }
+  return out;
 }
 
 function keyDrifts(matrix: Matrix, key: string): boolean {
@@ -1281,13 +1394,18 @@ function buildSectionDivider(
   renderer: CliRenderer,
   id: string,
   name: string | undefined,
-  width: number
+  width: number,
+  meta: { drift: number; total: number; collapsed: boolean }
 ): BoxRenderable {
   // A single-line banner that spans the full matrix width. When the section
   // is unnamed (e.g. keys without a comment banner or no underscore prefix),
   // label it explicitly so the user sees it as a deliberate group rather
   // than a stray rule.
-  const label = name ? ` ${name} ` : ' (other) ';
+  const baseName = name ?? '(other)';
+  const indicator = meta.collapsed ? '▸' : '▾';
+  const stats =
+    meta.drift > 0 ? `${meta.drift}/${meta.total} drift` : `${meta.total} keys`;
+  const label = ` ${indicator} ${baseName} · ${stats} `;
   const rule = '─';
   const visible = Math.max(0, width - 2);
   const beforeLen = Math.max(2, Math.floor((visible - label.length) / 2));
@@ -1304,7 +1422,7 @@ function buildSectionDivider(
     new TextRenderable(renderer, {
       id: `${id}-text`,
       content,
-      fg: COLORS.fgSection
+      fg: meta.drift > 0 ? COLORS.differs : COLORS.fgSection
     })
   );
   return box;
@@ -1368,10 +1486,9 @@ function renderCellText(
 ): string {
   if (cellState === 'missing') return '✗ missing';
   if (value === undefined) return '';
-  // Show "—" for present-but-empty values so the key is visually identifiable
-  // (without it the cell looks identical to a missing one). Secret-flagged
-  // empties already render as •••• via formatValue.
-  const formatted = formatValue(value, secret) || '—';
+  // Empty values stay visually empty so they aren't confused with a real
+  // value of "—". The key column on the left still anchors the row.
+  const formatted = formatValue(value, secret);
   if (cellState === 'extra') return `★ ${formatted}`;
   if (cellState === 'differs') return `≠ ${formatted}`;
   return formatted;
