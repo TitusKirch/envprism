@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "description": "TUI-based env file manager — refract one set of variables into many environment views.",
   "keywords": [
+    "bun",
     "cli",
     "commitlint",
     "conventional-commits",
@@ -12,7 +13,7 @@
     "env",
     "husky",
     "kirchdev",
-    "nodejs",
+    "opentui",
     "oxfmt",
     "oxlint",
     "pnpm",

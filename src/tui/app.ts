@@ -74,20 +74,29 @@ interface State {
   modified: Set<string>;
 }
 
+// Three semantic colours only. Everything else is grayscale so the eye
+// doesn't get pulled in five directions.
 const COLORS = {
   fg: RGBA.fromHex('#cccccc'),
   fgDim: RGBA.fromHex('#666666'),
   fgHeader: RGBA.fromHex('#ffffff'),
-  // Base file accent — blue/purple so it doesn't collide with the drift-
-  // yellow indicator that is also used everywhere.
+  // accent — base file + section names (blue/purple, single accent for
+  // navigational anchors).
   fgBase: RGBA.fromHex('#82aaff'),
-  fgDirty: RGBA.fromHex('#ffd866'),
   fgSection: RGBA.fromHex('#82aaff'),
+  // attention — anything that drifts, differs, was modified, or is a
+  // placeholder. All the same yellow so "noteworthy" reads as one
+  // signal across cells.
   differs: RGBA.fromHex('#ffd866'),
+  extra: RGBA.fromHex('#ffd866'),
+  placeholder: RGBA.fromHex('#ffd866'),
+  // modified marker is dim — its meaning is carried by position (trailing,
+  // not leading) and the fact that it's there at all; no need to compete
+  // for attention with the drift icon.
+  modified: RGBA.fromHex('#cccccc'),
+  fgDirty: RGBA.fromHex('#ffd866'),
+  // problem — value-is-missing red. Reserved exclusively for missing.
   missing: RGBA.fromHex('#ff6b6b'),
-  extra: RGBA.fromHex('#c792ea'),
-  placeholder: RGBA.fromHex('#ffa05c'),
-  modified: RGBA.fromHex('#7fce6a'),
   focusBg: RGBA.fromHex('#3a3f4b')
 };
 
@@ -189,7 +198,7 @@ function buildHelpLines(): HelpLine[] {
     {
       kind: 'legend',
       symbol: '★ value',
-      color: RGBA.fromHex('#c792ea'),
+      color: RGBA.fromHex('#ffd866'),
       description: 'key is not in the base'
     },
     {
@@ -201,13 +210,13 @@ function buildHelpLines(): HelpLine[] {
     {
       kind: 'legend',
       symbol: '⚠ TODO',
-      color: RGBA.fromHex('#ffa05c'),
+      color: RGBA.fromHex('#ffd866'),
       description: 'placeholder value (TODO, CHANGEME, xxx, …)'
     },
     {
       kind: 'legend',
       symbol: 'value ●',
-      color: RGBA.fromHex('#7fce6a'),
+      color: RGBA.fromHex('#cccccc'),
       description: 'modified in this session — Ctrl-S to persist'
     }
   ];
@@ -576,7 +585,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     return Math.max(VALUE_COL_MIN, fair);
   };
 
-  const refresh = () => {
+  const refreshNow = () => {
     const valueColWidth = computeValueColWidth();
     refreshSidebar(sidebar, renderer, matrix, allFiles, state);
     refreshMatrix(
@@ -605,8 +614,23 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       state.helpOpen || state.mode === 'prompt' || state.mode === 'filter';
   };
 
+  // Coalesce burst-y refreshes (held arrow keys, fast filter typing) into
+  // one render per microtask flush. The full refreshNow rebuilds every
+  // matrix row, which is expensive when called for every keystroke; with
+  // batching, holding an arrow key spends most of the time in opentui's
+  // own redraw loop instead of in our re-render.
+  let refreshScheduled = false;
+  const refresh = () => {
+    if (refreshScheduled) return;
+    refreshScheduled = true;
+    queueMicrotask(() => {
+      refreshScheduled = false;
+      refreshNow();
+    });
+  };
+
   recomputeVisibleKeys();
-  refresh();
+  refreshNow();
 
   // --- Interaction ---
   return new Promise<void>((resolve) => {
@@ -881,7 +905,12 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       if (p.kind === 'new-file') {
         const name = raw.trim();
         if (!isValidEnvFileName(name)) {
-          state.message = `"${name}" is not a valid .env* filename.`;
+          state.message =
+            name.length === 0
+              ? 'Filename cannot be empty.'
+              : !name.startsWith('.env')
+                ? `Filename must start with ".env" (got "${name}").`
+                : `"${name}" is not a valid env filename.`;
           refresh();
           return;
         }
@@ -1105,8 +1134,6 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           return startDelete();
         case 'n':
           return startNewFile();
-        case 'equal':
-          return syncToAll();
         case 'v':
           state.driftOnly = !state.driftOnly;
           state.message = state.driftOnly
@@ -1166,6 +1193,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         refresh();
         return;
       }
+
+      // = sync-to-all. opentui's key.name for "=" is inconsistent across
+      // platforms so we check the sequence directly.
+      if (key.sequence === '=') return syncToAll();
 
       if (key.sequence === '?' || key.sequence === 'ß') {
         state.helpOpen = true;
@@ -1572,6 +1603,21 @@ function refreshPrompt(
   // context to show — just the input.
   removeAllChildren(promptBody);
   promptBody.add(promptInput);
+  // Show validation errors inside the modal so they aren't hidden behind
+  // the dim overlay. state.message is set by commitPrompt when input is
+  // invalid (and cleared on each fresh openPrompt).
+  if (state.message) {
+    promptBody.add(
+      new TextRenderable(renderer, {
+        id: 'prompt-error',
+        content: `! ${state.message}`,
+        fg: COLORS.missing,
+        height: 1,
+        marginTop: 1,
+        wrapMode: 'none'
+      })
+    );
+  }
 
   if (p.kind === 'edit' || p.kind === 'add-value') {
     const secret = isSecretKey(p.key) && !state.showSecrets;
