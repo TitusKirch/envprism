@@ -38,8 +38,6 @@ export interface HeuristicsConfig {
 export interface DiffConfig {
   /** Emit JSON instead of the text table by default. */
   json: boolean;
-  /** Mask secret-suspect values in diff output. */
-  mask: boolean;
   /** Exit code used by `--check` when files drift. */
   checkExitCode: number;
 }
@@ -72,6 +70,8 @@ export interface TuiConfig {
   theme: ThemeConfig;
   layout: LayoutConfig;
   undoLimit: number;
+  /** Start with secret-suspect values masked (toggle in-app with Ctrl-T). */
+  maskSecrets: boolean;
 }
 
 /** Fully-resolved, internal config shape (every field populated). */
@@ -93,6 +93,7 @@ export interface EnvprismUserConfig {
     theme?: ThemeConfig;
     layout?: Partial<LayoutConfig>;
     undoLimit?: number;
+    maskSecrets?: boolean;
   };
 }
 
@@ -141,7 +142,6 @@ export const DEFAULT_CONFIG: EnvprismConfig = {
   },
   diff: {
     json: false,
-    mask: true,
     checkExitCode: 1
   },
   tui: {
@@ -153,6 +153,7 @@ export const DEFAULT_CONFIG: EnvprismConfig = {
       rowGap: 0,
       cellPadX: 1
     },
-    undoLimit: 50
+    undoLimit: 50,
+    maskSecrets: true
   }
 };

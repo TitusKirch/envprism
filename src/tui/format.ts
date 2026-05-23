@@ -4,10 +4,13 @@ import type { EnvFile, KvEntry } from '@/core/types.ts';
 export const PLACEHOLDER_RE =
   /^(todo|fixme|changeme|placeholder|tbd|x{3,}|your[_-]?(secret|key|token|password|api[_-]?key)(_here)?|replace[_-]?me)$/i;
 
-export function isPlaceholderValue(value: string): boolean {
+export function isPlaceholderValue(
+  value: string,
+  re: RegExp = PLACEHOLDER_RE
+): boolean {
   const v = value.trim();
   if (v.length === 0) return false;
-  return PLACEHOLDER_RE.test(v);
+  return re.test(v);
 }
 
 export function formatValue(

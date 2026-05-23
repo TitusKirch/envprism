@@ -44,8 +44,7 @@ describe('mergeConfig', () => {
   it('lets user scalars win and fills gaps from defaults (defu)', () => {
     const merged = mergeConfig({ diff: { json: true } });
     expect(merged.diff.json).toBe(true);
-    expect(merged.diff.mask).toBe(true); // gap filled from default
-    expect(merged.diff.checkExitCode).toBe(1);
+    expect(merged.diff.checkExitCode).toBe(1); // gap filled from default
   });
 
   it('deep-merges partial theme overrides, keeping other keys absent', () => {

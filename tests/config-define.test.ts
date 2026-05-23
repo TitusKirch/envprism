@@ -23,9 +23,9 @@ describe('DEFAULT_CONFIG', () => {
     expect(DEFAULT_CONFIG.heuristics.grouping).toBe('auto');
     expect(DEFAULT_CONFIG.diff).toEqual({
       json: false,
-      mask: true,
       checkExitCode: 1
     });
+    expect(DEFAULT_CONFIG.tui.maskSecrets).toBe(true);
     expect(DEFAULT_CONFIG.tui.layout).toEqual({
       keyColWidth: 22,
       valueColMin: 18,

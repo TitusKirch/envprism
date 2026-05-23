@@ -1,9 +1,12 @@
 import { defu } from 'defu';
+import { isSecretKey } from '@/core/mask.ts';
 import {
   DEFAULT_CONFIG,
   type EnvprismConfig,
-  type EnvprismUserConfig
+  type EnvprismUserConfig,
+  type GroupingMode
 } from '@/config/schema.ts';
+import { isPlaceholderValue } from '@tui/format.ts';
 
 /**
  * Resolve a replace-or-extend list field. An explicit `replace` list wins over
@@ -62,7 +65,32 @@ export function mergeConfig(user: EnvprismUserConfig = {}): EnvprismConfig {
     tui: {
       theme: defu(user.tui?.theme, DEFAULT_CONFIG.tui.theme),
       layout: defu(user.tui?.layout, DEFAULT_CONFIG.tui.layout),
-      undoLimit: user.tui?.undoLimit ?? DEFAULT_CONFIG.tui.undoLimit
+      undoLimit: user.tui?.undoLimit ?? DEFAULT_CONFIG.tui.undoLimit,
+      maskSecrets: user.tui?.maskSecrets ?? DEFAULT_CONFIG.tui.maskSecrets
     }
+  };
+}
+
+export interface ResolvedHeuristics {
+  isSecretKey(key: string): boolean;
+  isPlaceholderValue(value: string): boolean;
+  grouping: GroupingMode;
+}
+
+/**
+ * Compile the resolved heuristics config into ready-to-call matchers. Secret
+ * tokens are upper-cased (the matcher upper-cases keys); placeholder atoms are
+ * compiled into a single case-insensitive alternation. RGBA-free.
+ */
+export function resolveHeuristics(c: EnvprismConfig): ResolvedHeuristics {
+  const tokens = c.heuristics.secretTokens.map((t) => t.toUpperCase());
+  const placeholderRe = new RegExp(
+    `^(${c.heuristics.placeholders.join('|')})$`,
+    'i'
+  );
+  return {
+    isSecretKey: (key) => isSecretKey(key, tokens),
+    isPlaceholderValue: (value) => isPlaceholderValue(value, placeholderRe),
+    grouping: c.heuristics.grouping
   };
 }
