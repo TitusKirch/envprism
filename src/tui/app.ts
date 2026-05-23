@@ -5,30 +5,33 @@ import {
   ScrollBoxRenderable,
   TextRenderable
 } from '@opentui/core';
-import { writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'pathe';
 import type { Matrix } from '@/core/matrix.ts';
-import { rebuildKvLine, serializeEnv } from '@/core/serialize.ts';
-import type { EnvFile } from '@/core/types.ts';
 import { COLORS, ROW_GAP, SIDEBAR_WIDTH } from '@tui/theme.ts';
-import { KEY_RE, type Prompt, type State, type UndoEntry } from '@tui/types.ts';
-import {
-  appendKv,
-  createEmptyEnvFile,
-  isValidEnvFileName
-} from '@tui/envfile.ts';
-import { findKvEntry } from '@tui/format.ts';
+import type { State } from '@tui/types.ts';
 import { prefixSection, stepRow } from '@tui/grouping.ts';
 import type { TuiContext, TuiElements } from '@tui/context.ts';
 import { refreshAll } from '@tui/render/index.ts';
 import {
-  focusedKey as focusedKeyImpl,
-  focusKey as focusKeyImpl,
-  markModified as markModifiedImpl,
-  pushUndo as pushUndoImpl,
   rebuildMatrix as rebuildMatrixImpl,
   recomputeVisibleKeys as recomputeVisibleKeysImpl
 } from '@tui/state/visible.ts';
+import {
+  cancelPrompt as cancelPromptImpl,
+  closePrompt as closePromptImpl,
+  commitPrompt as commitPromptImpl,
+  startAdd as startAddImpl,
+  startDelete as startDeleteImpl,
+  startEdit as startEditImpl,
+  startNewFile as startNewFileImpl
+} from '@tui/actions/prompt.ts';
+import {
+  applyToAllFiles as applyToAllFilesImpl,
+  setBase as setBaseImpl,
+  syncToAll as syncToAllImpl,
+  toggleEnabled as toggleEnabledImpl,
+  undo as undoImpl
+} from '@tui/actions/batch.ts';
+import { saveDirty as saveDirtyImpl } from '@tui/actions/io.ts';
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
@@ -344,11 +347,6 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   // --- State helpers (thin ctx-bound wrappers over state/visible.ts) ---
   const recomputeVisibleKeys = () => recomputeVisibleKeysImpl(ctx);
   const rebuildMatrix = () => rebuildMatrixImpl(ctx);
-  const focusKey = (key: string) => focusKeyImpl(ctx, key);
-  const focusedKey = () => focusedKeyImpl(ctx);
-  const markModified = (key: string, file: EnvFile) =>
-    markModifiedImpl(ctx, key, file);
-  const pushUndo = (entry: UndoEntry) => pushUndoImpl(ctx, entry);
 
   recomputeVisibleKeys();
   ctx.refreshNow();
@@ -361,319 +359,22 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       resolve();
     };
 
-    const openPrompt = (prompt: Prompt, value = '', placeholder = '') => {
-      void placeholder; // input is rendered as plain text now, no placeholder slot
-      state.prompt = prompt;
-      state.mode = 'prompt';
-      state.message = null;
-      state.promptInput = value;
-      refresh();
-    };
-
-    const closePrompt = (msg: string | null = null) => {
-      state.prompt = null;
-      state.mode = 'browse';
-      state.promptInput = '';
-      state.message = msg;
-      refresh();
-    };
-
-    const startEdit = () => {
-      const key = focusedKey();
-      const file = ctx.matrix.files[state.colIdx];
-      if (!key || !file) {
-        state.message = 'Move onto a variable row to edit.';
-        refresh();
-        return;
-      }
-      // Edit works on missing cells too — on commit we either update the
-      // existing entry or append a new one.
-      const entry = findKvEntry(file, key);
-      openPrompt({ kind: 'edit', key, file }, entry?.value ?? '', 'value');
-    };
-
-    const startAdd = () => {
-      const file = ctx.matrix.files[state.colIdx];
-      if (!file) return;
-      openPrompt({ kind: 'add-key', file }, '', 'NEW_KEY');
-    };
-
-    const startNewFile = () => {
-      openPrompt({ kind: 'new-file' }, '', '.env.local');
-    };
-
-    const startDelete = () => {
-      const key = focusedKey();
-      const file = ctx.matrix.files[state.colIdx];
-      if (!key || !file) {
-        state.message = 'Move onto a variable row to delete.';
-        refresh();
-        return;
-      }
-      const entry = findKvEntry(file, key);
-      if (!entry) {
-        state.message = `${key} is not present in ${basename(file.path)}.`;
-        refresh();
-        return;
-      }
-      const idx = file.entries.indexOf(entry);
-      if (idx >= 0) {
-        pushUndo({ kind: 'delete-kv', file, entry, idx });
-        file.entries.splice(idx, 1);
-      }
-      state.dirty.add(file);
-      markModified(key, file);
-      rebuildMatrix();
-      state.message = `Deleted ${key} from ${basename(file.path)}. Ctrl-S to save.`;
-      refresh();
-    };
-
-    const toggleEnabled = () => {
-      const file = allFiles[state.sidebarIdx];
-      if (!file) return;
-      if (state.enabled.has(file)) {
-        if (state.enabled.size === 1) {
-          state.message = 'At least one file must stay enabled.';
-          refresh();
-          return;
-        }
-        state.enabled.delete(file);
-        state.message = `Hidden ${basename(file.path)} from the matrix.`;
-      } else {
-        state.enabled.add(file);
-        state.message = `Showing ${basename(file.path)} in the matrix.`;
-      }
-      rebuildMatrix();
-      refresh();
-    };
-
-    const setBase = () => {
-      const file = allFiles[state.sidebarIdx];
-      if (!file) return;
-      if (file === ctx.currentBase) {
-        state.message = `${basename(file.path)} is already the base.`;
-        refresh();
-        return;
-      }
-      const wasDisabled = !state.enabled.has(file);
-      if (wasDisabled) state.enabled.add(file);
-      ctx.currentBase = file;
-      rebuildMatrix();
-      state.message = wasDisabled
-        ? `${basename(file.path)} is now the base (re-enabled).`
-        : `${basename(file.path)} is now the base.`;
-      refresh();
-    };
-
-    const applyToAllFiles = (key: string, value: string): number => {
-      // Set key=value in every enabled file. Used by '=' in the matrix and
-      // Ctrl-A from the edit prompt. Each per-file mutation is undone
-      // individually (one Ctrl-Z per file) — not perfect but predictable.
-      let touched = 0;
-      for (const file of ctx.matrix.files) {
-        const existing = findKvEntry(file, key);
-        if (existing) {
-          if (existing.value === value) continue;
-          pushUndo({
-            kind: 'edit',
-            file,
-            entry: existing,
-            prevValue: existing.value,
-            prevRaw: existing.raw
-          });
-          existing.value = value;
-          rebuildKvLine(existing);
-        } else {
-          const added = appendKv(file, key, value);
-          pushUndo({ kind: 'add-kv', file, entry: added });
-        }
-        state.dirty.add(file);
-        markModified(key, file);
-        touched++;
-      }
-      return touched;
-    };
-
-    const syncToAll = () => {
-      const key = focusedKey();
-      const file = ctx.matrix.files[state.colIdx];
-      if (!key || !file) {
-        state.message = 'Move onto a variable row to sync.';
-        refresh();
-        return;
-      }
-      const entry = findKvEntry(file, key);
-      if (!entry) {
-        state.message = `${key} has no value in ${basename(file.path)} to sync.`;
-        refresh();
-        return;
-      }
-      const touched = applyToAllFiles(key, entry.value);
-      rebuildMatrix();
-      state.message =
-        touched > 0
-          ? `Synced ${key} to ${touched} file(s). Ctrl-S to save.`
-          : `${key} is already in sync.`;
-      refresh();
-    };
-
-    const undo = () => {
-      const last = state.undo.pop();
-      if (!last) {
-        state.message = 'Nothing to undo.';
-        refresh();
-        return;
-      }
-      switch (last.kind) {
-        case 'edit':
-          last.entry.value = last.prevValue;
-          last.entry.raw = last.prevRaw;
-          state.dirty.add(last.file);
-          state.message = `Undid edit on ${last.entry.key} in ${basename(last.file.path)}.`;
-          break;
-        case 'add-kv': {
-          const i = last.file.entries.indexOf(last.entry);
-          if (i >= 0) last.file.entries.splice(i, 1);
-          state.dirty.add(last.file);
-          state.message = `Undid add of ${last.entry.key} in ${basename(last.file.path)}.`;
-          break;
-        }
-        case 'delete-kv':
-          last.file.entries.splice(last.idx, 0, last.entry);
-          state.dirty.add(last.file);
-          state.message = `Undid delete of ${last.entry.key} in ${basename(last.file.path)}.`;
-          break;
-      }
-      rebuildMatrix();
-      refresh();
-    };
-
-    const commitPrompt = () => {
-      if (!state.prompt) return;
-      const p = state.prompt;
-      const raw = state.promptInput;
-
-      if (p.kind === 'edit') {
-        const existing = findKvEntry(p.file, p.key);
-        if (existing) {
-          pushUndo({
-            kind: 'edit',
-            file: p.file,
-            entry: existing,
-            prevValue: existing.value,
-            prevRaw: existing.raw
-          });
-          existing.value = raw;
-          rebuildKvLine(existing);
-          state.dirty.add(p.file);
-          markModified(p.key, p.file);
-          rebuildMatrix();
-          closePrompt(
-            `Edited ${p.key} in ${basename(p.file.path)}. Ctrl-S to save.`
-          );
-        } else {
-          // Missing cell: add the key with the typed value.
-          const added = appendKv(p.file, p.key, raw);
-          pushUndo({ kind: 'add-kv', file: p.file, entry: added });
-          state.dirty.add(p.file);
-          markModified(p.key, p.file);
-          rebuildMatrix();
-          closePrompt(
-            `Added ${p.key} to ${basename(p.file.path)}. Ctrl-S to save.`
-          );
-        }
-        return;
-      }
-
-      if (p.kind === 'add-key') {
-        const key = raw.trim();
-        if (!KEY_RE.test(key)) {
-          state.message = `Invalid key "${key}". Must match ${KEY_RE.source}.`;
-          refresh();
-          return;
-        }
-        if (findKvEntry(p.file, key)) {
-          state.message = `${key} already exists in ${basename(p.file.path)}. Use edit instead.`;
-          refresh();
-          return;
-        }
-        openPrompt({ kind: 'add-value', key, file: p.file }, '', 'value');
-        return;
-      }
-
-      if (p.kind === 'add-value') {
-        const added = appendKv(p.file, p.key, raw);
-        pushUndo({ kind: 'add-kv', file: p.file, entry: added });
-        state.dirty.add(p.file);
-        markModified(p.key, p.file);
-        rebuildMatrix();
-        focusKey(p.key);
-        state.colIdx = ctx.matrix.files.indexOf(p.file);
-        closePrompt(
-          `Added ${p.key} to ${basename(p.file.path)}. Ctrl-S to save.`
-        );
-        return;
-      }
-
-      if (p.kind === 'new-file') {
-        const name = raw.trim();
-        if (!isValidEnvFileName(name)) {
-          state.message =
-            name.length === 0
-              ? 'Filename cannot be empty.'
-              : !name.startsWith('.env')
-                ? `Filename must start with ".env" (got "${name}").`
-                : `"${name}" is not a valid env filename.`;
-          refresh();
-          return;
-        }
-        const newPath = join(dirname(ctx.currentBase.path), name);
-        if (allFiles.some((f) => f.path === newPath)) {
-          state.message = `${name} already exists.`;
-          refresh();
-          return;
-        }
-        const newFile = createEmptyEnvFile(newPath);
-        allFiles.push(newFile);
-        state.enabled.add(newFile);
-        state.dirty.add(newFile);
-        rebuildMatrix();
-        state.colIdx = ctx.matrix.files.indexOf(newFile);
-        closePrompt(`Created ${name}. Ctrl-S to write to disk.`);
-        return;
-      }
-    };
-
-    const cancelPrompt = () => {
-      closePrompt('Cancelled.');
-    };
-
-    const saveDirty = async () => {
-      if (state.dirty.size === 0) {
-        state.message = 'Nothing to save.';
-        refresh();
-        return;
-      }
-      const count = state.dirty.size;
-      const errors: string[] = [];
-      for (const file of state.dirty) {
-        try {
-          await writeFile(file.path, serializeEnv(file), 'utf8');
-        } catch (err) {
-          errors.push(
-            `${basename(file.path)}: ${(err as Error).message ?? String(err)}`
-          );
-        }
-      }
-      if (errors.length === 0) {
-        state.dirty.clear();
-        state.modified.clear();
-        state.message = `Saved ${count} file${count === 1 ? '' : 's'}.`;
-      } else {
-        state.message = `Save failed: ${errors.join('; ')}`;
-      }
-      refresh();
-    };
+    // Thin ctx-bound wrappers so the key handler below reads unchanged.
+    const closePrompt = (msg: string | null = null) =>
+      closePromptImpl(ctx, msg);
+    const cancelPrompt = () => cancelPromptImpl(ctx);
+    const commitPrompt = () => commitPromptImpl(ctx);
+    const startEdit = () => startEditImpl(ctx);
+    const startAdd = () => startAddImpl(ctx);
+    const startNewFile = () => startNewFileImpl(ctx);
+    const startDelete = () => startDeleteImpl(ctx);
+    const applyToAllFiles = (key: string, value: string) =>
+      applyToAllFilesImpl(ctx, key, value);
+    const syncToAll = () => syncToAllImpl(ctx);
+    const undo = () => undoImpl(ctx);
+    const toggleEnabled = () => toggleEnabledImpl(ctx);
+    const setBase = () => setBaseImpl(ctx);
+    const saveDirty = () => saveDirtyImpl(ctx);
 
     const onKey = (key: {
       name: string;
