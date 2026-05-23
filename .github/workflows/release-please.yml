@@ -6,10 +6,12 @@ on:
   push:
     branches:
       - main
+      - dev
 
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,9 +20,89 @@ concurrency:
 jobs:
   release-please:
     name: Run release-please
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  publish-release:
+    name: Publish stable release
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish
+        run: pnpm publish --access public --provenance --no-git-checks --tag latest
+
+  publish-prerelease:
+    name: Publish prerelease
+    # Skip the version-bump merges release-please pushes onto main.
+    if: >-
+      ${{
+        github.ref_name == 'dev'
+        || (
+          github.ref_name == 'main'
+          && !startsWith(github.event.head_commit.message, 'chore(main): release')
+          && !startsWith(github.event.head_commit.message, 'chore: release')
+        )
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Compute prerelease version
+        id: version
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            TAG=dev-main
+          else
+            TAG=dev
+          fi
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          BASE=${BASE_VERSION%%-*}
+          SHORT_SHA=${GITHUB_SHA::7}
+          NEW_VERSION="${BASE}-${TAG}.${{ github.run_number }}-${SHORT_SHA}"
+          npm version --no-git-tag-version --allow-same-version "$NEW_VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        run: pnpm publish --access public --provenance --no-git-checks --tag ${{ steps.version.outputs.tag }}
