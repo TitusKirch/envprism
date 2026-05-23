@@ -68,6 +68,10 @@ interface State {
   enabled: Set<EnvFile>;
   showSecrets: boolean;
   collapsed: Set<string>;
+  // (key + "|" + file.path) of cells the user has touched in this session.
+  // Drives a green ● marker so unsaved local changes are visually distinct
+  // from "this file disagrees with base", which uses the diff icons.
+  modified: Set<string>;
 }
 
 const COLORS = {
@@ -83,6 +87,7 @@ const COLORS = {
   missing: RGBA.fromHex('#ff6b6b'),
   extra: RGBA.fromHex('#c792ea'),
   placeholder: RGBA.fromHex('#ffa05c'),
+  modified: RGBA.fromHex('#7fce6a'),
   focusBg: RGBA.fromHex('#3a3f4b')
 };
 
@@ -198,6 +203,12 @@ function buildHelpLines(): HelpLine[] {
       symbol: '⚠ TODO',
       color: RGBA.fromHex('#ffa05c'),
       description: 'placeholder value (TODO, CHANGEME, xxx, …)'
+    },
+    {
+      kind: 'legend',
+      symbol: 'value ●',
+      color: RGBA.fromHex('#7fce6a'),
+      description: 'modified in this session — Ctrl-S to persist'
     }
   ];
 }
@@ -234,8 +245,13 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     sidebarIdx: 0,
     enabled: new Set(allFiles),
     showSecrets: false,
-    collapsed: new Set()
+    collapsed: new Set(),
+    modified: new Set()
   };
+
+  const cellKey = (key: string, file: EnvFile) => `${key}|${file.path}`;
+  const markModified = (key: string, file: EnvFile) =>
+    state.modified.add(cellKey(key, file));
 
   const SECTION_COLLAPSE_KEY = (name: string | undefined) =>
     name ?? '__other__';
@@ -343,26 +359,53 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   footer.add(status);
 
-  const filterInput = new InputRenderable(renderer, {
-    id: 'filter-input',
-    placeholder: 'Filter keys…',
-    width: 40
+  // Filter has its own popover so we don't fight opentui's input-focus
+  // behaviour. state.filter is the source of truth; characters are
+  // accumulated by the global keypress handler when state.mode === 'filter'.
+  const filterBox = new BoxRenderable(renderer, {
+    id: 'filter-box',
+    position: 'absolute',
+    top: '15%',
+    left: '20%',
+    right: '20%',
+    height: 'auto',
+    zIndex: 60,
+    border: true,
+    borderStyle: 'rounded',
+    title: ' Filter keys ',
+    paddingX: 2,
+    paddingY: 1,
+    visible: false,
+    backgroundColor: RGBA.fromHex('#1a1a1a'),
+    flexDirection: 'column'
   });
-  footer.add(filterInput);
-  // Subscribe directly to the input — the global keypress handler doesn't
-  // see chars consumed by the focused Input, so we mirror the value via
-  // the Input's own events instead. Read .value directly so we don't depend
-  // on whichever payload opentui happens to pass with the event.
-  const syncFilterFromInput = () => {
-    if (state.mode !== 'filter') return;
-    const value = filterInput.value;
-    if (state.filter === value) return;
-    state.filter = value;
-    recomputeVisibleKeys();
-    refresh();
-  };
-  filterInput.on('input', syncFilterFromInput);
-  filterInput.on('change', syncFilterFromInput);
+  const filterField = new TextRenderable(renderer, {
+    id: 'filter-field',
+    content: '',
+    fg: COLORS.fg,
+    height: 1,
+    wrapMode: 'none'
+  });
+  const filterStatus = new TextRenderable(renderer, {
+    id: 'filter-status',
+    content: '',
+    fg: COLORS.fgDim,
+    height: 1,
+    marginTop: 1,
+    wrapMode: 'none'
+  });
+  const filterHint = new TextRenderable(renderer, {
+    id: 'filter-hint',
+    content: 'Enter · keep filter    Esc · clear & close',
+    fg: COLORS.fg,
+    height: 1,
+    marginTop: 1,
+    wrapMode: 'none'
+  });
+  filterBox.add(filterField);
+  filterBox.add(filterStatus);
+  filterBox.add(filterHint);
+  renderer.root.add(filterBox);
 
   // --- Prompt modal (used for edit / add / new-file) ---
   const promptBox = new BoxRenderable(renderer, {
@@ -395,9 +438,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   const promptHint = new TextRenderable(renderer, {
     id: 'prompt-hint',
-    content:
-      'Enter · confirm    Ctrl-A · apply to all files    ' +
-      'Ctrl-T · show/mask secrets    Esc · cancel',
+    content: '',
     fg: COLORS.fg,
     height: 1,
     marginTop: 2,
@@ -427,13 +468,16 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   // Floating help overlay. Hidden until '?' / 'ß' opens it. Two-column grid
   // so the overlay stays compact vertically and doesn't run off the bottom
   // on small terminals.
+  // Help overlay — outer Box stays absolute-positioned; the body is rebuilt
+  // every time it opens so we can switch between a one-column scrollable
+  // layout (small terminals) and a two-column grid (wide terminals).
   const helpBox = new BoxRenderable(renderer, {
     id: 'help-overlay',
     position: 'absolute',
     top: 2,
+    bottom: 2,
     left: '8%',
     right: '8%',
-    height: 'auto',
     zIndex: 100,
     border: true,
     borderStyle: 'rounded',
@@ -442,40 +486,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     paddingY: 1,
     visible: false,
     backgroundColor: RGBA.fromHex('#1a1a1a'),
-    flexDirection: 'row',
-    columnGap: 3
+    flexDirection: 'column'
   });
-  const helpLeft = new BoxRenderable(renderer, {
-    id: 'help-left',
-    flexDirection: 'column',
-    flexGrow: 1,
-    flexBasis: 0
-  });
-  const helpRight = new BoxRenderable(renderer, {
-    id: 'help-right',
-    flexDirection: 'column',
-    flexGrow: 1,
-    flexBasis: 0
-  });
-  const helpLines = buildHelpLines();
-  // Split at the first blank line after the half-way mark so columns break on
-  // a group boundary, not mid-section.
-  const half = Math.floor(helpLines.length / 2);
-  let splitIdx = half;
-  for (let i = half; i < helpLines.length; i++) {
-    if (helpLines[i]?.kind === 'blank') {
-      splitIdx = i + 1;
-      break;
-    }
-  }
-  helpLines.slice(0, splitIdx).forEach((line, i) => {
-    helpLeft.add(buildHelpRow(renderer, `help-l-${i}`, line));
-  });
-  helpLines.slice(splitIdx).forEach((line, i) => {
-    helpRight.add(buildHelpRow(renderer, `help-r-${i}`, line));
-  });
-  helpBox.add(helpLeft);
-  helpBox.add(helpRight);
   renderer.root.add(helpBox);
 
   // --- State helpers ---
@@ -577,10 +589,20 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       valueColWidth,
       sectionOf
     );
-    refreshFooter(hintA, hintB, status, filterInput, renderer, state);
-    refreshPrompt(promptBox, promptBody, promptInput, renderer, matrix, state);
-    helpBox.visible = state.helpOpen;
-    dimOverlay.visible = state.helpOpen || state.mode === 'prompt';
+    refreshFooter(hintA, hintB, status, renderer, state);
+    refreshPrompt(
+      promptBox,
+      promptBody,
+      promptInput,
+      promptHint,
+      renderer,
+      matrix,
+      state
+    );
+    refreshHelp(helpBox, renderer, state);
+    refreshFilter(filterBox, filterField, filterStatus, matrix, state);
+    dimOverlay.visible =
+      state.helpOpen || state.mode === 'prompt' || state.mode === 'filter';
   };
 
   recomputeVisibleKeys();
@@ -663,6 +685,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         file.entries.splice(idx, 1);
       }
       state.dirty.add(file);
+      markModified(key, file);
       rebuildMatrix();
       state.message = `Deleted ${key} from ${basename(file.path)}. Ctrl-S to save.`;
       refresh();
@@ -728,6 +751,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           pushUndo({ kind: 'add-kv', file, entry: added });
         }
         state.dirty.add(file);
+        markModified(key, file);
         touched++;
       }
       return touched;
@@ -805,6 +829,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           existing.value = raw;
           rebuildKvLine(existing);
           state.dirty.add(p.file);
+          markModified(p.key, p.file);
           rebuildMatrix();
           closePrompt(
             `Edited ${p.key} in ${basename(p.file.path)}. Ctrl-S to save.`
@@ -814,6 +839,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           const added = appendKv(p.file, p.key, raw);
           pushUndo({ kind: 'add-kv', file: p.file, entry: added });
           state.dirty.add(p.file);
+          markModified(p.key, p.file);
           rebuildMatrix();
           closePrompt(
             `Added ${p.key} to ${basename(p.file.path)}. Ctrl-S to save.`
@@ -842,6 +868,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         const added = appendKv(p.file, p.key, raw);
         pushUndo({ kind: 'add-kv', file: p.file, entry: added });
         state.dirty.add(p.file);
+        markModified(p.key, p.file);
         rebuildMatrix();
         focusKey(p.key);
         state.colIdx = matrix.files.indexOf(p.file);
@@ -898,6 +925,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       }
       if (errors.length === 0) {
         state.dirty.clear();
+        state.modified.clear();
         state.message = `Saved ${count} file${count === 1 ? '' : 's'}.`;
       } else {
         state.message = `Save failed: ${errors.join('; ')}`;
@@ -950,22 +978,33 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
       if (state.mode === 'filter') {
         if (key.name === 'escape') {
-          filterInput.value = '';
           state.filter = '';
           state.mode = 'browse';
-          filterInput.blur();
           recomputeVisibleKeys();
           refresh();
           return;
         }
         if (key.name === 'return') {
           state.mode = 'browse';
-          filterInput.blur();
           refresh();
           return;
         }
-        // All other keys are consumed by the focused InputRenderable; the
-        // 'input' subscription mirrors the value into state.filter.
+        if (key.name === 'backspace') {
+          if (state.filter.length > 0) {
+            state.filter = state.filter.slice(0, -1);
+            recomputeVisibleKeys();
+            refresh();
+          }
+          return;
+        }
+        // Append any printable character. opentui's KeyEvent puts the actual
+        // char into `sequence` for normal keystrokes.
+        const seq = key.sequence ?? '';
+        if (seq.length === 1 && seq >= ' ' && seq !== '\x7f') {
+          state.filter += seq;
+          recomputeVisibleKeys();
+          refresh();
+        }
         return;
       }
 
@@ -1124,11 +1163,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       if (key.sequence === '/' || key.name === 'slash') {
         state.mode = 'filter';
         state.message = null;
-        // refresh first so the input is visible, then focus it. Focus on a
-        // hidden renderable is a no-op in opentui — was the cause of "filter
-        // never accepts keystrokes".
         refresh();
-        filterInput.focus();
         return;
       }
 
@@ -1272,19 +1307,33 @@ function refreshMatrix(
       const cell = matrix.cell(key, file);
       const focused =
         state.mode === 'browse' && r === state.rowIdx && c === state.colIdx;
-      cells.push(buildValueCell(cell, secret, valueColWidth, focused));
+      const isModified = state.modified.has(`${key}|${file.path}`);
+      cells.push(
+        buildValueCell(cell, secret, valueColWidth, focused, isModified)
+      );
     }
     scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
   }
 
-  // Keep the focused row visible when navigating up/down past the viewport.
+  // Keep the focused cell in view when navigating off-screen. Deferred so
+  // yoga has finished laying out the freshly added rows; otherwise the
+  // child's position isn't known yet and scrollChildIntoView is a no-op.
   if (state.mode === 'browse' && state.visibleItems.length > 0) {
-    try {
-      scrollBox.scrollChildIntoView(`row-${state.rowIdx}`);
-    } catch {
-      // scrollChildIntoView throws if the row id isn't laid out yet; the
-      // next refresh after layout will succeed.
-    }
+    setImmediate(() => {
+      try {
+        const focusedItem = state.visibleItems[state.rowIdx];
+        if (focusedItem?.kind === 'key') {
+          // colIdx + 1 because cell index 0 is the KEY column.
+          scrollBox.scrollChildIntoView(
+            `row-${state.rowIdx}-c${state.colIdx + 1}`
+          );
+        } else {
+          scrollBox.scrollChildIntoView(`row-${state.rowIdx}`);
+        }
+      } catch {
+        // child not in tree yet — the next refresh after layout will work.
+      }
+    });
   }
 }
 
@@ -1326,11 +1375,101 @@ function renderHintBox(
   });
 }
 
+function refreshHelp(
+  helpBox: BoxRenderable,
+  renderer: CliRenderer,
+  state: State
+): void {
+  helpBox.visible = state.helpOpen;
+  if (!state.helpOpen) return;
+  removeAllChildren(helpBox);
+  const lines = buildHelpLines();
+  // Use one scrollable column when the terminal is narrow or short.
+  const narrow = renderer.terminalWidth < 100;
+  const short = renderer.terminalHeight < 36;
+  const oneColumn = narrow || short;
+  if (oneColumn) {
+    const scroll = new ScrollBoxRenderable(renderer, {
+      id: 'help-scroll',
+      flexGrow: 1,
+      scrollX: false,
+      scrollY: true,
+      viewportOptions: { paddingRight: 1 },
+      contentOptions: { flexDirection: 'column' }
+    });
+    helpBox.add(scroll);
+    lines.forEach((line, i) => {
+      scroll.content.add(buildHelpRow(renderer, `help-${i}`, line));
+    });
+    return;
+  }
+  // Two-column grid.
+  const grid = new BoxRenderable(renderer, {
+    id: 'help-grid',
+    flexDirection: 'row',
+    flexGrow: 1,
+    columnGap: 3
+  });
+  const left = new BoxRenderable(renderer, {
+    id: 'help-left',
+    flexDirection: 'column',
+    flexGrow: 1,
+    flexBasis: 0
+  });
+  const right = new BoxRenderable(renderer, {
+    id: 'help-right',
+    flexDirection: 'column',
+    flexGrow: 1,
+    flexBasis: 0
+  });
+  const half = Math.floor(lines.length / 2);
+  let splitIdx = half;
+  for (let i = half; i < lines.length; i++) {
+    if (lines[i]?.kind === 'blank') {
+      splitIdx = i + 1;
+      break;
+    }
+  }
+  lines
+    .slice(0, splitIdx)
+    .forEach((line, i) =>
+      left.add(buildHelpRow(renderer, `help-l-${i}`, line))
+    );
+  lines
+    .slice(splitIdx)
+    .forEach((line, i) =>
+      right.add(buildHelpRow(renderer, `help-r-${i}`, line))
+    );
+  grid.add(left);
+  grid.add(right);
+  helpBox.add(grid);
+}
+
+function refreshFilter(
+  filterBox: BoxRenderable,
+  filterField: TextRenderable,
+  filterStatus: TextRenderable,
+  matrix: Matrix,
+  state: State
+): void {
+  const open = state.mode === 'filter';
+  filterBox.visible = open;
+  if (!open) return;
+  // Show the current filter with a fake cursor at the end. visibleKeys is
+  // already filtered, so its length is the live match count.
+  filterField.content = `▸ ${state.filter}▏`;
+  const matches = state.visibleKeys.length;
+  const total = matrix.keys.length;
+  filterStatus.content =
+    state.filter.length === 0
+      ? 'Type to filter the keys list.'
+      : `Matching ${matches} of ${total} keys.`;
+}
+
 function refreshFooter(
   hintA: BoxRenderable,
   hintB: BoxRenderable,
   status: TextRenderable,
-  filterInput: InputRenderable,
   renderer: CliRenderer,
   state: State
 ): void {
@@ -1399,7 +1538,6 @@ function refreshFooter(
       { text: state.showSecrets ? 'shown' : 'masked', fg: COLORS.fg }
     ]);
   }
-  filterInput.visible = state.mode === 'filter';
   status.content = state.message ?? '';
 }
 
@@ -1407,6 +1545,7 @@ function refreshPrompt(
   promptBox: BoxRenderable,
   promptBody: BoxRenderable,
   promptInput: InputRenderable,
+  promptHint: TextRenderable,
   renderer: CliRenderer,
   matrix: Matrix,
   state: State
@@ -1417,12 +1556,21 @@ function refreshPrompt(
   if (!open || !state.prompt) return;
 
   promptBox.title = promptLabelText(state.prompt);
+  // Hint depends on which prompt is active — only edit/add-value support
+  // the apply-to-all + show-secrets shortcuts.
+  const p = state.prompt;
+  if (p.kind === 'edit' || p.kind === 'add-value') {
+    promptHint.content =
+      'Enter · confirm    Ctrl-A · apply to all    ' +
+      'Ctrl-T · show/mask secrets    Esc · cancel';
+  } else {
+    promptHint.content = 'Enter · confirm    Esc · cancel';
+  }
 
   // Body layout: full-width input on top, then a context table of every file
   // and its current value (read-only). For add-key / new-file there's no
   // context to show — just the input.
   removeAllChildren(promptBody);
-  const p = state.prompt;
   promptBody.add(promptInput);
 
   if (p.kind === 'edit' || p.kind === 'add-value') {
@@ -1596,16 +1744,19 @@ function buildValueCell(
   cell: { state: CellState; value: string | undefined },
   secret: boolean,
   width: number,
-  focused: boolean
+  focused: boolean,
+  modified: boolean
 ): CellSpec {
   const bg = focused ? COLORS.focusBg : undefined;
+  const trailing = modified ? { char: '●', fg: COLORS.modified } : undefined;
   if (cell.state === 'missing') {
     return {
       text: 'missing',
       fg: COLORS.fgDim,
       width,
       bg,
-      icon: { char: '✗', fg: COLORS.missing }
+      icon: { char: '✗', fg: COLORS.missing },
+      trailing
     };
   }
   const value = cell.value ?? '';
@@ -1615,11 +1766,10 @@ function buildValueCell(
       fg: COLORS.fg,
       width,
       bg,
-      icon: { char: '⚠', fg: COLORS.placeholder }
+      icon: { char: '⚠', fg: COLORS.placeholder },
+      trailing
     };
   }
-  // Empty value: render "(empty)" in dim so the cell isn't confused with a
-  // missing one but the eye still glides past it.
   const isEmpty = value === '' && !secret;
   const displayText = isEmpty ? '(empty)' : formatValue(value, secret);
   const displayFg = isEmpty ? COLORS.fgDim : COLORS.fg;
@@ -1629,7 +1779,8 @@ function buildValueCell(
       fg: displayFg,
       width,
       bg,
-      icon: { char: '≠', fg: COLORS.differs }
+      icon: { char: '≠', fg: COLORS.differs },
+      trailing
     };
   }
   if (cell.state === 'extra') {
@@ -1638,11 +1789,11 @@ function buildValueCell(
       fg: displayFg,
       width,
       bg,
-      icon: { char: '★', fg: COLORS.extra }
+      icon: { char: '★', fg: COLORS.extra },
+      trailing
     };
   }
-  // base / same — no icon.
-  return { text: displayText, fg: displayFg, width, bg };
+  return { text: displayText, fg: displayFg, width, bg, trailing };
 }
 
 function keyDrifts(matrix: Matrix, key: string): boolean {
@@ -1840,6 +1991,9 @@ interface CellSpec {
   // Optional coloured prefix — rendered in its own Text span so only the
   // icon carries the state colour, the text stays neutral.
   icon?: { char: string; fg: RGBA };
+  // Optional coloured marker that sits at the right edge of the cell.
+  // Used for the modified-since-load indicator.
+  trailing?: { char: string; fg: RGBA };
 }
 
 function buildRow(
@@ -1865,8 +2019,10 @@ function buildRow(
     if (cell.bg) cellOpts.backgroundColor = cell.bg;
     const cellBox = new BoxRenderable(renderer, cellOpts);
     const innerWidth = Math.max(0, cell.width - CELL_PAD_X * 2);
+    const iconLen = cell.icon ? cell.icon.char.length + 1 : 0;
+    const trailingLen = cell.trailing ? cell.trailing.char.length + 1 : 0;
+    const textWidth = Math.max(0, innerWidth - iconLen - trailingLen);
     if (cell.icon) {
-      const iconLen = cell.icon.char.length + 1; // " " separator
       cellBox.add(
         new TextRenderable(renderer, {
           id: `${idPrefix}-c${i}-icon`,
@@ -1876,21 +2032,23 @@ function buildRow(
           wrapMode: 'none'
         })
       );
+    }
+    cellBox.add(
+      new TextRenderable(renderer, {
+        id: `${idPrefix}-c${i}-t`,
+        content: truncate(cell.text, textWidth),
+        fg: cell.fg,
+        height: 1,
+        flexGrow: 1,
+        wrapMode: 'none'
+      })
+    );
+    if (cell.trailing) {
       cellBox.add(
         new TextRenderable(renderer, {
-          id: `${idPrefix}-c${i}-t`,
-          content: truncate(cell.text, Math.max(0, innerWidth - iconLen)),
-          fg: cell.fg,
-          height: 1,
-          wrapMode: 'none'
-        })
-      );
-    } else {
-      cellBox.add(
-        new TextRenderable(renderer, {
-          id: `${idPrefix}-c${i}-t`,
-          content: truncate(cell.text, innerWidth),
-          fg: cell.fg,
+          id: `${idPrefix}-c${i}-trail`,
+          content: ` ${cell.trailing.char}`,
+          fg: cell.trailing.fg,
           height: 1,
           wrapMode: 'none'
         })
