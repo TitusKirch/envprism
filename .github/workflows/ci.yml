@@ -77,8 +77,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test
-        run: pnpm test
+      - name: Test with coverage
+        run: pnpm test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
+        with:
+          files: coverage/lcov.info
+          fail_ci_if_error: false
+          flags: vitest
+          name: codecov-vitest
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   build:
     name: Build
