@@ -8,10 +8,10 @@ import {
 } from '@opentui/core';
 import { writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'pathe';
-import { isSecretKey, maskValue } from '@/core/mask.ts';
+import { isSecretKey } from '@/core/mask.ts';
 import { buildMatrix, type CellState, type Matrix } from '@/core/matrix.ts';
 import { rebuildKvLine, serializeEnv } from '@/core/serialize.ts';
-import type { EnvFile, KvEntry } from '@/core/types.ts';
+import type { EnvFile } from '@/core/types.ts';
 import {
   CELL_PAD_X,
   COLORS,
@@ -29,115 +29,27 @@ import {
   UNDO_LIMIT,
   type UndoEntry
 } from '@tui/types.ts';
-
-const PLACEHOLDER_RE =
-  /^(todo|fixme|changeme|placeholder|tbd|x{3,}|your[_-]?(secret|key|token|password|api[_-]?key)(_here)?|replace[_-]?me)$/i;
-
-function isPlaceholderValue(value: string): boolean {
-  const v = value.trim();
-  if (v.length === 0) return false;
-  return PLACEHOLDER_RE.test(v);
-}
-
-function buildHelpLines(): HelpLine[] {
-  return [
-    { kind: 'header', text: 'Panes' },
-    {
-      kind: 'entry',
-      text: '  Tab               Switch matrix ↔ files sidebar'
-    },
-    {
-      kind: 'entry',
-      text: '  ← (leftmost col)  Hop from matrix into the sidebar'
-    },
-    { kind: 'blank' },
-    { kind: 'header', text: 'Matrix navigation' },
-    { kind: 'entry', text: '  ↑ ↓ ← →           Move focused cell' },
-    { kind: 'entry', text: '  Mouse wheel       Scroll (both axes)' },
-    { kind: 'blank' },
-    { kind: 'header', text: 'Files sidebar' },
-    { kind: 'entry', text: '  ↑ ↓               Move selection' },
-    { kind: 'entry', text: '  Space             Enable / disable file' },
-    { kind: 'entry', text: '  b                 Make selected file the base' },
-    { kind: 'entry', text: '  Tab / →           Back to matrix' },
-    { kind: 'blank' },
-    { kind: 'header', text: 'Editing' },
-    { kind: 'entry', text: '  e / Enter         Edit focused cell value' },
-    { kind: 'entry', text: '  a                 Add a new variable here' },
-    {
-      kind: 'entry',
-      text: '  d                 Delete the variable from this file'
-    },
-    { kind: 'entry', text: '  n                 Create a new .env* file' },
-    {
-      kind: 'entry',
-      text: '  =                 Sync focused value to every file'
-    },
-    {
-      kind: 'entry',
-      text: '  Ctrl-A (in edit)  Apply typed value to every file'
-    },
-    { kind: 'entry', text: '  Ctrl-Z            Undo last edit/add/delete' },
-    { kind: 'entry', text: '  Ctrl-S            Write all dirty files' },
-    {
-      kind: 'entry',
-      text: '  c                 Collapse / expand focused section'
-    },
-    {
-      kind: 'entry',
-      text: '  Shift-C           Expand every collapsed section'
-    },
-    { kind: 'blank' },
-    { kind: 'header', text: 'View' },
-    { kind: 'entry', text: '  /                 Filter keys' },
-    { kind: 'entry', text: '  v                 All keys ↔ drift-only' },
-    { kind: 'entry', text: '  g                 Group by prefix ↔ banner' },
-    { kind: 'entry', text: '  Ctrl-T            Show / mask secret values' },
-    { kind: 'blank' },
-    { kind: 'header', text: 'Help & exit' },
-    { kind: 'entry', text: '  ? / ß             Toggle this overlay' },
-    { kind: 'entry', text: '  q                 Quit (twice if dirty)' },
-    { kind: 'entry', text: '  Ctrl-C            Force quit' },
-    { kind: 'blank' },
-    { kind: 'header', text: 'Cell icons' },
-    {
-      kind: 'legend',
-      symbol: '≠ value',
-      color: RGBA.fromHex('#ffd866'),
-      description: 'value differs from base'
-    },
-    {
-      kind: 'legend',
-      symbol: '✗ missing',
-      color: RGBA.fromHex('#ff6b6b'),
-      description: 'this file has no value for the key'
-    },
-    {
-      kind: 'legend',
-      symbol: '★ value',
-      color: RGBA.fromHex('#ffd866'),
-      description: 'key is not in the base'
-    },
-    {
-      kind: 'legend',
-      symbol: '•••• (N)',
-      color: RGBA.fromHex('#cccccc'),
-      description: 'secret-suspect value masked by length'
-    },
-    {
-      kind: 'legend',
-      symbol: '⚠ TODO',
-      color: RGBA.fromHex('#ffd866'),
-      description: 'placeholder value (TODO, CHANGEME, xxx, …)'
-    },
-    {
-      kind: 'legend',
-      symbol: 'value ●',
-      color: RGBA.fromHex('#7fce6a'),
-      description: 'modified in this session — Ctrl-S to persist'
-    }
-  ];
-}
+import {
+  appendKv,
+  createEmptyEnvFile,
+  isValidEnvFileName
+} from '@tui/envfile.ts';
+import {
+  findKvEntry,
+  formatValue,
+  isPlaceholderValue,
+  matchesFilter,
+  truncate
+} from '@tui/format.ts';
+import {
+  keyDrifts,
+  orderedKeys,
+  prefixSection,
+  sectionMetadata,
+  type SectionStats,
+  stepRow
+} from '@tui/grouping.ts';
+import { buildHelpLines } from '@tui/help.ts';
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
@@ -1612,108 +1524,6 @@ function promptLabelText(p: Prompt): string {
       return ' New env file name (e.g. .env.local):';
   }
 }
-
-// --- Helpers ---
-
-function prefixSection(key: string): string | undefined {
-  const idx = key.indexOf('_');
-  if (idx <= 0) return undefined;
-  return key.slice(0, idx);
-}
-
-/**
- * Sort by first-underscore-prefix while preserving the relative order each
- * prefix first appeared in. Keys without an underscore land in a trailing
- * "Other" group keeping their authored order.
- */
-function groupByPrefix(keys: string[]): string[] {
-  const groups = new Map<string, string[]>();
-  const order: string[] = [];
-  const OTHER = '__other__';
-  for (const k of keys) {
-    const p = prefixSection(k) ?? OTHER;
-    let bucket = groups.get(p);
-    if (!bucket) {
-      bucket = [];
-      groups.set(p, bucket);
-      if (p !== OTHER) order.push(p);
-    }
-    bucket.push(k);
-  }
-  if (groups.has(OTHER)) order.push(OTHER);
-  return order.flatMap((p) => groups.get(p)!);
-}
-
-/**
- * Move row focus by `delta` while skipping section dividers that are not
- * collapsed. The user only needs to land on a divider when its section is
- * folded — that's the only context in which 'c' on the divider does work
- * the focused-key path doesn't already cover.
- */
-function stepRow(state: State, delta: number): number {
-  const items = state.visibleItems;
-  if (items.length === 0) return 0;
-  const canFocus = (i: number) => {
-    const it = items[i];
-    if (!it) return false;
-    if (it.kind === 'key') return true;
-    // divider — focusable only when collapsed
-    return state.collapsed.has(it.ref);
-  };
-  let i = state.rowIdx + delta;
-  while (i >= 0 && i < items.length) {
-    if (canFocus(i)) return i;
-    i += delta;
-  }
-  // No focusable item further along — clamp to current.
-  return state.rowIdx;
-}
-
-function orderedKeys(
-  matrix: Matrix,
-  state: State,
-  sectionOf: (key: string) => string | undefined
-): string[] {
-  void sectionOf;
-  const filtered = matrix.keys.filter((k) => {
-    if (!matchesFilter(k, state.filter)) return false;
-    if (state.driftOnly && !keyDrifts(matrix, k)) return false;
-    return true;
-  });
-  return state.grouping === 'prefix' ? groupByPrefix(filtered) : filtered;
-}
-
-interface SectionStats {
-  drift: number;
-  missing: number;
-  total: number;
-}
-
-function sectionMetadata(
-  matrix: Matrix,
-  sectionOf: (key: string) => string | undefined,
-  state: State
-): Map<string, SectionStats> {
-  const out = new Map<string, SectionStats>();
-  for (const key of orderedKeys(matrix, state, sectionOf)) {
-    const k = sectionOf(key) ?? '__other__';
-    const bucket = out.get(k) ?? { drift: 0, missing: 0, total: 0 };
-    bucket.total += 1;
-    let drifts = false;
-    let missing = false;
-    for (const file of matrix.files) {
-      if (file === matrix.base) continue;
-      const s = matrix.cell(key, file).state;
-      if (s === 'missing') missing = true;
-      if (s === 'differs' || s === 'missing' || s === 'extra') drifts = true;
-    }
-    if (drifts) bucket.drift += 1;
-    if (missing) bucket.missing += 1;
-    out.set(k, bucket);
-  }
-  return out;
-}
-
 function buildValueCell(
   cell: { state: CellState; value: string | undefined },
   secret: boolean,
@@ -1768,52 +1578,6 @@ function buildValueCell(
     };
   }
   return { text: displayText, fg: displayFg, width, bg, trailing };
-}
-
-function keyDrifts(matrix: Matrix, key: string): boolean {
-  for (const file of matrix.files) {
-    if (file === matrix.base) continue;
-    const s = matrix.cell(key, file).state;
-    if (s === 'differs' || s === 'missing' || s === 'extra') return true;
-  }
-  return false;
-}
-
-function isValidEnvFileName(name: string): boolean {
-  if (!name.startsWith('.env')) return false;
-  if (name.includes('/') || name.includes('\\')) return false;
-  if (name.endsWith('.swp') || name.endsWith('~') || name.endsWith('.bak'))
-    return false;
-  return true;
-}
-
-function createEmptyEnvFile(path: string): EnvFile {
-  return {
-    path,
-    entries: [{ kind: 'comment', raw: `# ${basename(path)}` }],
-    trailingNewline: true
-  };
-}
-
-function appendKv(file: EnvFile, key: string, value: string): KvEntry {
-  const entry: KvEntry = {
-    kind: 'kv',
-    key,
-    rawValue: '',
-    value,
-    quoting: 'none',
-    exportPrefix: false,
-    inlineComment: '',
-    raw: ''
-  };
-  rebuildKvLine(entry);
-  file.entries.push(entry);
-  // Round-trip semantics: serializeEnv joins with \n and appends a trailing
-  // newline if trailingNewline is set. Push alone gives us "...\nKEY=val" when
-  // trailingNewline=false, or "...\nKEY=val\n" when true. Either case is
-  // sane; we make sure the file ends with a newline so editors don't complain.
-  file.trailingNewline = true;
-  return entry;
 }
 
 function buildHelpRow(
@@ -2047,29 +1811,4 @@ function matrixTitle(matrix: Matrix, state: State): string {
     parts.push(`"${state.filter}" ${visible}/${total}`);
   }
   return ` Matrix · ${parts.join(' · ')} `;
-}
-
-function formatValue(value: string | undefined, secret: boolean): string {
-  if (value === undefined) return '';
-  if (secret) return maskValue(value);
-  return value;
-}
-
-function matchesFilter(key: string, filter: string): boolean {
-  if (!filter) return true;
-  return key.toLowerCase().includes(filter.toLowerCase());
-}
-
-function truncate(text: string, width: number): string {
-  if (width <= 0) return '';
-  if (text.length <= width) return text;
-  if (width <= 1) return '…';
-  return `${text.slice(0, width - 1)}…`;
-}
-
-function findKvEntry(file: EnvFile, key: string): KvEntry | undefined {
-  for (const e of file.entries) {
-    if (e.kind === 'kv' && e.key === key) return e;
-  }
-  return undefined;
 }
