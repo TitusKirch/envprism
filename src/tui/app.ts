@@ -7,32 +7,28 @@ import {
 } from '@opentui/core';
 import { writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'pathe';
-import { buildMatrix, type Matrix } from '@/core/matrix.ts';
+import type { Matrix } from '@/core/matrix.ts';
 import { rebuildKvLine, serializeEnv } from '@/core/serialize.ts';
 import type { EnvFile } from '@/core/types.ts';
 import { COLORS, ROW_GAP, SIDEBAR_WIDTH } from '@tui/theme.ts';
-import {
-  KEY_RE,
-  type MatrixItem,
-  type Prompt,
-  type State,
-  UNDO_LIMIT,
-  type UndoEntry
-} from '@tui/types.ts';
+import { KEY_RE, type Prompt, type State, type UndoEntry } from '@tui/types.ts';
 import {
   appendKv,
   createEmptyEnvFile,
   isValidEnvFileName
 } from '@tui/envfile.ts';
-import { findKvEntry, matchesFilter } from '@tui/format.ts';
-import {
-  keyDrifts,
-  orderedKeys,
-  prefixSection,
-  stepRow
-} from '@tui/grouping.ts';
+import { findKvEntry } from '@tui/format.ts';
+import { prefixSection, stepRow } from '@tui/grouping.ts';
 import type { TuiContext, TuiElements } from '@tui/context.ts';
 import { refreshAll } from '@tui/render/index.ts';
+import {
+  focusedKey as focusedKeyImpl,
+  focusKey as focusKeyImpl,
+  markModified as markModifiedImpl,
+  pushUndo as pushUndoImpl,
+  rebuildMatrix as rebuildMatrixImpl,
+  recomputeVisibleKeys as recomputeVisibleKeysImpl
+} from '@tui/state/visible.ts';
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
@@ -67,18 +63,6 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     collapsed: new Set(),
     modified: new Set(),
     promptInput: ''
-  };
-
-  const cellKey = (key: string, file: EnvFile) => `${key}|${file.path}`;
-  const markModified = (key: string, file: EnvFile) =>
-    state.modified.add(cellKey(key, file));
-
-  const SECTION_COLLAPSE_KEY = (name: string | undefined) =>
-    name ?? '__other__';
-
-  const pushUndo = (entry: UndoEntry) => {
-    state.undo.push(entry);
-    if (state.undo.length > UNDO_LIMIT) state.undo.shift();
   };
 
   // --- Layout ---
@@ -357,73 +341,14 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const refresh = ctx.refresh;
   const sectionOf = ctx.sectionOf;
 
-  // --- State helpers ---
-  const recomputeVisibleKeys = () => {
-    // Two parallel structures:
-    //   visibleKeys  — just the key names (used by editing helpers)
-    //   visibleItems — dividers + visible keys, in render order
-    // Dividers stay in the item list even when their section is collapsed,
-    // so the user can navigate onto one and expand it with 'c'.
-    const visibleKeys: string[] = [];
-    const items: MatrixItem[] = [];
-    const orderedAll = orderedKeys(ctx.matrix, state, sectionOf);
-    const seen = new Set<string>();
-    const focusedRef = state.visibleItems[state.rowIdx]?.ref;
-    for (const k of orderedAll) {
-      if (!matchesFilter(k, state.filter)) continue;
-      if (state.driftOnly && !keyDrifts(ctx.matrix, k)) continue;
-      const sec = sectionOf(k);
-      const secKey = SECTION_COLLAPSE_KEY(sec);
-      if (!seen.has(secKey)) {
-        seen.add(secKey);
-        items.push({ kind: 'divider', ref: secKey });
-      }
-      if (state.collapsed.has(secKey)) continue;
-      items.push({ kind: 'key', ref: k });
-      visibleKeys.push(k);
-    }
-    state.visibleKeys = visibleKeys;
-    state.visibleItems = items;
-    // Try to keep focus on the same item across rebuilds.
-    if (focusedRef) {
-      const i = items.findIndex((it) => it.ref === focusedRef);
-      if (i >= 0) state.rowIdx = i;
-    }
-    if (state.rowIdx >= items.length) {
-      state.rowIdx = Math.max(0, items.length - 1);
-    }
-    // Make sure we don't land on an expanded divider after a rebuild.
-    if (
-      items[state.rowIdx]?.kind === 'divider' &&
-      !state.collapsed.has(items[state.rowIdx]!.ref)
-    ) {
-      const next = stepRow(state, 1);
-      const prev = stepRow(state, -1);
-      state.rowIdx = next !== state.rowIdx ? next : prev;
-    }
-  };
-
-  const rebuildMatrix = () => {
-    const enabledList = allFiles.filter((f) => state.enabled.has(f));
-    if (!state.enabled.has(ctx.currentBase)) {
-      // Base got disabled — promote the first enabled file.
-      const next = enabledList[0];
-      if (next) ctx.currentBase = next;
-    }
-    ctx.matrix = buildMatrix(enabledList, ctx.currentBase);
-    if (state.colIdx >= ctx.matrix.files.length) {
-      state.colIdx = Math.max(0, ctx.matrix.files.length - 1);
-    }
-    if (state.sidebarIdx >= allFiles.length) {
-      state.sidebarIdx = Math.max(0, allFiles.length - 1);
-    }
-    recomputeVisibleKeys();
-  };
-
-  const focusKey = (key: string) => {
-    const idx = state.visibleKeys.indexOf(key);
-    if (idx >= 0) state.rowIdx = idx;
-  };
+  // --- State helpers (thin ctx-bound wrappers over state/visible.ts) ---
+  const recomputeVisibleKeys = () => recomputeVisibleKeysImpl(ctx);
+  const rebuildMatrix = () => rebuildMatrixImpl(ctx);
+  const focusKey = (key: string) => focusKeyImpl(ctx, key);
+  const focusedKey = () => focusedKeyImpl(ctx);
+  const markModified = (key: string, file: EnvFile) =>
+    markModifiedImpl(ctx, key, file);
+  const pushUndo = (entry: UndoEntry) => pushUndoImpl(ctx, entry);
 
   recomputeVisibleKeys();
   ctx.refreshNow();
@@ -451,11 +376,6 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       state.promptInput = '';
       state.message = msg;
       refresh();
-    };
-
-    const focusedKey = (): string | null => {
-      const item = state.visibleItems[state.rowIdx];
-      return item && item.kind === 'key' ? item.ref : null;
     };
 
     const startEdit = () => {
