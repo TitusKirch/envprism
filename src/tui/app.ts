@@ -155,32 +155,24 @@ function buildHelpLines(): HelpLine[] {
     { kind: 'entry', text: '  q                 Quit (twice if dirty)' },
     { kind: 'entry', text: '  Ctrl-C            Force quit' },
     { kind: 'blank' },
-    { kind: 'header', text: 'Row icons (in the KEY column)' },
+    { kind: 'header', text: 'Cell icons' },
     {
       kind: 'legend',
-      symbol: '✗ KEY',
-      color: RGBA.fromHex('#ff6b6b'),
-      description: 'at least one file is missing this key'
-    },
-    {
-      kind: 'legend',
-      symbol: '≠ KEY',
+      symbol: '≠ value',
       color: RGBA.fromHex('#ffd866'),
-      description: 'value differs in at least one file'
+      description: 'value differs from base'
     },
-    {
-      kind: 'legend',
-      symbol: '★ KEY',
-      color: RGBA.fromHex('#c792ea'),
-      description: 'key is not in the base'
-    },
-    { kind: 'blank' },
-    { kind: 'header', text: 'Cell text' },
     {
       kind: 'legend',
       symbol: '✗ missing',
-      color: RGBA.fromHex('#666666'),
+      color: RGBA.fromHex('#ff6b6b'),
       description: 'this file has no value for the key'
+    },
+    {
+      kind: 'legend',
+      symbol: '★ value',
+      color: RGBA.fromHex('#c792ea'),
+      description: 'key is not in the base'
     },
     {
       kind: 'legend',
@@ -1154,41 +1146,15 @@ function refreshMatrix(
     }
     const key = item.ref;
     const secret = isSecretKey(key) && !state.showSecrets;
-    // Row-level state: highest-priority signal wins. Missing in any file
-    // beats differs beats extra (key absent from base). Drives a single
-    // coloured icon in the key column; value cells render in neutral grey.
-    const rowIndicator = rowLevelIndicator(matrix, key);
-    const cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[] = [
-      {
-        text: rowIndicator ? `${rowIndicator.icon} ${key}` : `  ${key}`,
-        fg: rowIndicator ? rowIndicator.fg : COLORS.fg,
-        width: KEY_COL_WIDTH
-      }
+    const cells: CellSpec[] = [
+      { text: key, fg: COLORS.fg, width: KEY_COL_WIDTH }
     ];
     for (let c = 0; c < matrix.files.length; c++) {
       const file = matrix.files[c]!;
       const cell = matrix.cell(key, file);
       const focused =
         state.mode === 'browse' && r === state.rowIdx && c === state.colIdx;
-      const placeholder =
-        cell.value !== undefined && isPlaceholderValue(cell.value);
-      // Only placeholder values keep their warning colour; everything else
-      // stays neutral so the eye is drawn to the row indicator and the
-      // values themselves rather than a wall of colour.
-      const text = placeholder
-        ? `⚠ ${cell.value}`
-        : renderCellText(cell.state, cell.value, secret);
-      const fg = placeholder
-        ? COLORS.placeholder
-        : cell.state === 'missing'
-          ? COLORS.fgDim
-          : COLORS.fg;
-      cells.push({
-        text,
-        fg,
-        width: valueColWidth,
-        bg: focused ? COLORS.focusBg : undefined
-      });
+      cells.push(buildValueCell(cell, secret, valueColWidth, focused));
     }
     scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
   }
@@ -1405,25 +1371,53 @@ function sectionMetadata(
   return out;
 }
 
-function rowLevelIndicator(
-  matrix: Matrix,
-  key: string
-): { icon: string; fg: RGBA } | null {
-  // Inspect the key across every non-base file and pick the most "wrong"
-  // signal. Priority: missing (red) > differs (yellow) > extra (purple) > none.
-  let missing = false;
-  let differs = false;
-  const baseHasKey = matrix.cell(key, matrix.base).state !== 'missing';
-  for (const file of matrix.files) {
-    if (file === matrix.base) continue;
-    const s = matrix.cell(key, file).state;
-    if (s === 'missing') missing = true;
-    else if (s === 'differs') differs = true;
+function buildValueCell(
+  cell: { state: CellState; value: string | undefined },
+  secret: boolean,
+  width: number,
+  focused: boolean
+): CellSpec {
+  const bg = focused ? COLORS.focusBg : undefined;
+  if (cell.state === 'missing') {
+    return {
+      text: 'missing',
+      fg: COLORS.fgDim,
+      width,
+      bg,
+      icon: { char: '✗', fg: COLORS.missing }
+    };
   }
-  if (missing) return { icon: '✗', fg: COLORS.missing };
-  if (differs) return { icon: '≠', fg: COLORS.differs };
-  if (!baseHasKey) return { icon: '★', fg: COLORS.extra };
-  return null;
+  const value = cell.value ?? '';
+  if (value !== '' && isPlaceholderValue(value)) {
+    return {
+      text: value,
+      fg: COLORS.fg,
+      width,
+      bg,
+      icon: { char: '⚠', fg: COLORS.placeholder }
+    };
+  }
+  const text = formatValue(value, secret);
+  if (cell.state === 'differs') {
+    return {
+      text,
+      fg: COLORS.fg,
+      width,
+      bg,
+      icon: { char: '≠', fg: COLORS.differs }
+    };
+  }
+  if (cell.state === 'extra') {
+    return {
+      text,
+      fg: COLORS.fg,
+      width,
+      bg,
+      icon: { char: '★', fg: COLORS.extra }
+    };
+  }
+  // base / same — no icon, neutral text.
+  return { text, fg: COLORS.fg, width, bg };
 }
 
 function keyDrifts(matrix: Matrix, key: string): boolean {
@@ -1624,10 +1618,20 @@ function buildSectionDivider(
   return box;
 }
 
+interface CellSpec {
+  text: string;
+  fg: RGBA;
+  width: number;
+  bg?: RGBA;
+  // Optional coloured prefix — rendered in its own Text span so only the
+  // icon carries the state colour, the text stays neutral.
+  icon?: { char: string; fg: RGBA };
+}
+
 function buildRow(
   renderer: CliRenderer,
   idPrefix: string,
-  cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[]
+  cells: CellSpec[]
 ): BoxRenderable {
   const row = new BoxRenderable(renderer, {
     id: idPrefix,
@@ -1640,20 +1644,44 @@ function buildRow(
       id: `${idPrefix}-c${i}`,
       width: cell.width,
       height: 1,
+      flexDirection: 'row',
       flexShrink: 0,
       paddingX: CELL_PAD_X
     };
     if (cell.bg) cellOpts.backgroundColor = cell.bg;
     const cellBox = new BoxRenderable(renderer, cellOpts);
-    // Inner width = column width minus the left + right padding.
     const innerWidth = Math.max(0, cell.width - CELL_PAD_X * 2);
-    cellBox.add(
-      new TextRenderable(renderer, {
-        id: `${idPrefix}-c${i}-t`,
-        content: truncate(cell.text, innerWidth),
-        fg: cell.fg
-      })
-    );
+    if (cell.icon) {
+      const iconLen = cell.icon.char.length + 1; // " " separator
+      cellBox.add(
+        new TextRenderable(renderer, {
+          id: `${idPrefix}-c${i}-icon`,
+          content: `${cell.icon.char} `,
+          fg: cell.icon.fg,
+          height: 1,
+          wrapMode: 'none'
+        })
+      );
+      cellBox.add(
+        new TextRenderable(renderer, {
+          id: `${idPrefix}-c${i}-t`,
+          content: truncate(cell.text, Math.max(0, innerWidth - iconLen)),
+          fg: cell.fg,
+          height: 1,
+          wrapMode: 'none'
+        })
+      );
+    } else {
+      cellBox.add(
+        new TextRenderable(renderer, {
+          id: `${idPrefix}-c${i}-t`,
+          content: truncate(cell.text, innerWidth),
+          fg: cell.fg,
+          height: 1,
+          wrapMode: 'none'
+        })
+      );
+    }
     row.add(cellBox);
   });
   return row;
@@ -1673,18 +1701,6 @@ function matrixTitle(matrix: Matrix, state: State): string {
     parts.push(`"${state.filter}" ${visible}/${total}`);
   }
   return ` Matrix · ${parts.join(' · ')} `;
-}
-
-function renderCellText(
-  cellState: CellState,
-  value: string | undefined,
-  secret: boolean
-): string {
-  if (cellState === 'missing') return '✗ missing';
-  if (value === undefined) return '';
-  // Value cells render plain — the row-level icon in the key column carries
-  // the diff state colour, so individual cells don't need ≠ / ★ prefixes.
-  return formatValue(value, secret);
 }
 
 function formatValue(value: string | undefined, secret: boolean): string {
