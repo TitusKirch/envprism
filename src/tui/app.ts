@@ -84,17 +84,16 @@ const COLORS = {
   // navigational anchors).
   fgBase: RGBA.fromHex('#82aaff'),
   fgSection: RGBA.fromHex('#82aaff'),
-  // attention — anything that drifts, differs, was modified, or is a
-  // placeholder. All the same yellow so "noteworthy" reads as one
-  // signal across cells.
+  // drift/extra/placeholder — same yellow. They describe disagreement with
+  // the base file, all one semantic.
   differs: RGBA.fromHex('#ffd866'),
   extra: RGBA.fromHex('#ffd866'),
   placeholder: RGBA.fromHex('#ffd866'),
-  // modified marker is dim — its meaning is carried by position (trailing,
-  // not leading) and the fact that it's there at all; no need to compete
-  // for attention with the drift icon.
-  modified: RGBA.fromHex('#cccccc'),
-  fgDirty: RGBA.fromHex('#ffd866'),
+  // user-made changes (modified cells, dirty files, unsaved counter) — green.
+  // Different colour from drift on purpose: "I just touched this" is a
+  // different signal from "this disagrees with the base".
+  modified: RGBA.fromHex('#7fce6a'),
+  fgDirty: RGBA.fromHex('#7fce6a'),
   // problem — value-is-missing red. Reserved exclusively for missing.
   missing: RGBA.fromHex('#ff6b6b'),
   focusBg: RGBA.fromHex('#3a3f4b')
@@ -216,7 +215,7 @@ function buildHelpLines(): HelpLine[] {
     {
       kind: 'legend',
       symbol: 'value ●',
-      color: RGBA.fromHex('#cccccc'),
+      color: RGBA.fromHex('#7fce6a'),
       description: 'modified in this session — Ctrl-S to persist'
     }
   ];
@@ -646,9 +645,15 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       state.message = null;
       promptInput.placeholder = placeholder;
       promptInput.value = value;
-      // Make the modal visible first so focus() targets a rendered input.
       refresh();
-      promptInput.focus();
+      // Defer focus to next tick so the keystroke that opened the prompt
+      // (e.g. "n" or "a") finishes propagating before the input becomes
+      // focused — otherwise that same char ends up typed into the input.
+      // The value is also re-cleared as a belt-and-braces guard.
+      queueMicrotask(() => {
+        promptInput.value = value;
+        promptInput.focus();
+      });
     };
 
     const closePrompt = (msg: string | null = null) => {
@@ -1346,25 +1351,15 @@ function refreshMatrix(
     scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
   }
 
-  // Keep the focused cell in view when navigating off-screen. Deferred so
-  // yoga has finished laying out the freshly added rows; otherwise the
-  // child's position isn't known yet and scrollChildIntoView is a no-op.
+  // Keep the focused row in view. Synchronous so the scroll lands at the
+  // same time as the row rebuild — deferring it raced with subsequent key
+  // presses and made the cursor "jump" around.
   if (state.mode === 'browse' && state.visibleItems.length > 0) {
-    setImmediate(() => {
-      try {
-        const focusedItem = state.visibleItems[state.rowIdx];
-        if (focusedItem?.kind === 'key') {
-          // colIdx + 1 because cell index 0 is the KEY column.
-          scrollBox.scrollChildIntoView(
-            `row-${state.rowIdx}-c${state.colIdx + 1}`
-          );
-        } else {
-          scrollBox.scrollChildIntoView(`row-${state.rowIdx}`);
-        }
-      } catch {
-        // child not in tree yet — the next refresh after layout will work.
-      }
-    });
+    try {
+      scrollBox.scrollChildIntoView(`row-${state.rowIdx}`);
+    } catch {
+      // child not in tree yet — the next refresh after layout will work.
+    }
   }
 }
 
@@ -1509,7 +1504,7 @@ function refreshFooter(
     dirty > 0
       ? [
           { text: '   ', fg: COLORS.fgDim },
-          { text: '●', fg: COLORS.differs },
+          { text: '●', fg: COLORS.modified },
           { text: ` ${dirty} unsaved`, fg: COLORS.fg }
         ]
       : [];
