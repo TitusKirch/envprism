@@ -74,8 +74,10 @@ const COLORS = {
   fg: RGBA.fromHex('#cccccc'),
   fgDim: RGBA.fromHex('#666666'),
   fgHeader: RGBA.fromHex('#ffffff'),
-  fgBase: RGBA.fromHex('#ffd866'),
-  fgDirty: RGBA.fromHex('#56b6c2'),
+  // Base file accent — blue/purple so it doesn't collide with the drift-
+  // yellow indicator that is also used everywhere.
+  fgBase: RGBA.fromHex('#82aaff'),
+  fgDirty: RGBA.fromHex('#ffd866'),
   fgSection: RGBA.fromHex('#82aaff'),
   differs: RGBA.fromHex('#ffd866'),
   missing: RGBA.fromHex('#ff6b6b'),
@@ -347,16 +349,20 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     width: 40
   });
   footer.add(filterInput);
-  // Subscribe directly to the input's change event — relying on the global
-  // keypress handler to mirror the value via queueMicrotask was racy and
-  // sometimes never fired (opentui consumes the keystroke first).
-  filterInput.on('input', (value: string) => {
+  // Subscribe directly to the input — the global keypress handler doesn't
+  // see chars consumed by the focused Input, so we mirror the value via
+  // the Input's own events instead. Read .value directly so we don't depend
+  // on whichever payload opentui happens to pass with the event.
+  const syncFilterFromInput = () => {
     if (state.mode !== 'filter') return;
+    const value = filterInput.value;
     if (state.filter === value) return;
     state.filter = value;
     recomputeVisibleKeys();
     refresh();
-  });
+  };
+  filterInput.on('input', syncFilterFromInput);
+  filterInput.on('change', syncFilterFromInput);
 
   // --- Prompt modal (used for edit / add / new-file) ---
   const promptBox = new BoxRenderable(renderer, {
@@ -1118,8 +1124,11 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       if (key.sequence === '/' || key.name === 'slash') {
         state.mode = 'filter';
         state.message = null;
-        filterInput.focus();
+        // refresh first so the input is visible, then focus it. Focus on a
+        // hidden renderable is a no-op in opentui — was the cause of "filter
+        // never accepts keystrokes".
         refresh();
+        filterInput.focus();
         return;
       }
 
@@ -1158,27 +1167,46 @@ function refreshSidebar(
     const matrixIdx = matrix.files.indexOf(file);
     const isFocusCol = isEnabled && matrixIdx === state.colIdx;
     const isPaneFocus = state.pane === 'sidebar' && i === state.sidebarIdx;
-    // Space-separated so adjacent glyphs (★ and ▸ in particular) don't blur
-    // into each other in narrow / variable-width fonts.
-    const marker =
-      `${isPaneFocus ? '▶' : ' '} ` +
-      `${isDirty ? '●' : ' '} ` +
-      `${isBase ? '★' : ' '} ` +
-      `${isFocusCol ? '▸' : ' '} ` +
-      `${isEnabled ? '✓' : '☐'}`;
-    // Foreground colour encodes role only: disabled (dim) / base (gold) /
-    // normal. Dirty state is already shown by the leading ● marker, so we
-    // don't recolour the filename for it — that previously made a dirty base
-    // flip from gold to cyan and felt inconsistent.
-    const fg = !isEnabled ? COLORS.fgDim : isBase ? COLORS.fgBase : COLORS.fg;
-    sidebar.add(
+    const nameFg = !isEnabled
+      ? COLORS.fgDim
+      : isBase
+        ? COLORS.fgBase
+        : COLORS.fg;
+
+    const row = new BoxRenderable(renderer, {
+      id: `file-${file.path}`,
+      flexDirection: 'row',
+      height: 1,
+      flexShrink: 0,
+      ...(isPaneFocus ? { backgroundColor: COLORS.focusBg } : {})
+    });
+    const span = (id: string, text: string, fg: RGBA) =>
       new TextRenderable(renderer, {
-        id: `file-${file.path}`,
-        content: `${marker} ${basename(file.path)}`,
+        id: `${row.id}-${id}`,
+        content: text,
         fg,
+        height: 1,
         wrapMode: 'none'
-      })
+      });
+    row.add(span('focus', `${isPaneFocus ? '▶' : ' '} `, COLORS.fg));
+    row.add(
+      span(
+        'dirty',
+        `${isDirty ? '●' : ' '} `,
+        isDirty ? COLORS.fgDirty : COLORS.fgDim
+      )
     );
+    row.add(
+      span(
+        'base',
+        `${isBase ? '★' : ' '} `,
+        isBase ? COLORS.fgBase : COLORS.fgDim
+      )
+    );
+    row.add(span('col', `${isFocusCol ? '▸' : ' '} `, COLORS.fgDim));
+    row.add(span('enabled', `${isEnabled ? '✓' : '☐'} `, COLORS.fgDim));
+    row.add(span('name', basename(file.path), nameFg));
+    sidebar.add(row);
   }
 }
 
