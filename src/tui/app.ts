@@ -129,10 +129,21 @@ function buildHelpLines(): HelpLine[] {
     { kind: 'entry', text: '  Tab / →           Back to matrix' },
     { kind: 'blank' },
     { kind: 'header', text: 'Editing' },
-    { kind: 'entry', text: '  e / Enter         Edit cell value' },
-    { kind: 'entry', text: '  a                 Add key to focused file' },
-    { kind: 'entry', text: '  d                 Delete key from focused file' },
-    { kind: 'entry', text: '  n                 New env file next to base' },
+    { kind: 'entry', text: '  e / Enter         Edit focused cell value' },
+    { kind: 'entry', text: '  a                 Add a new variable here' },
+    {
+      kind: 'entry',
+      text: '  d                 Delete the variable from this file'
+    },
+    { kind: 'entry', text: '  n                 Create a new .env* file' },
+    {
+      kind: 'entry',
+      text: '  =                 Sync focused value to every file'
+    },
+    {
+      kind: 'entry',
+      text: '  Ctrl-A (in edit)  Apply typed value to every file'
+    },
     { kind: 'entry', text: '  Ctrl-Z            Undo last edit/add/delete' },
     { kind: 'entry', text: '  Ctrl-S            Write all dirty files' },
     {
@@ -369,7 +380,9 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   const promptHint = new TextRenderable(renderer, {
     id: 'prompt-hint',
-    content: 'Enter · confirm    Esc · cancel    Ctrl-T · show/mask secrets',
+    content:
+      'Enter · confirm    Ctrl-A · apply to all files    ' +
+      'Ctrl-T · show/mask secrets    Esc · cancel',
     fg: COLORS.fgDim,
     height: 1,
     marginTop: 2,
@@ -487,6 +500,15 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     }
     if (state.rowIdx >= items.length) {
       state.rowIdx = Math.max(0, items.length - 1);
+    }
+    // Make sure we don't land on an expanded divider after a rebuild.
+    if (
+      items[state.rowIdx]?.kind === 'divider' &&
+      !state.collapsed.has(items[state.rowIdx]!.ref)
+    ) {
+      const next = stepRow(state, 1);
+      const prev = stepRow(state, -1);
+      state.rowIdx = next !== state.rowIdx ? next : prev;
     }
   };
 
@@ -668,6 +690,57 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       refresh();
     };
 
+    const applyToAllFiles = (key: string, value: string): number => {
+      // Set key=value in every enabled file. Used by '=' in the matrix and
+      // Ctrl-A from the edit prompt. Each per-file mutation is undone
+      // individually (one Ctrl-Z per file) — not perfect but predictable.
+      let touched = 0;
+      for (const file of matrix.files) {
+        const existing = findKvEntry(file, key);
+        if (existing) {
+          if (existing.value === value) continue;
+          pushUndo({
+            kind: 'edit',
+            file,
+            entry: existing,
+            prevValue: existing.value,
+            prevRaw: existing.raw
+          });
+          existing.value = value;
+          rebuildKvLine(existing);
+        } else {
+          const added = appendKv(file, key, value);
+          pushUndo({ kind: 'add-kv', file, entry: added });
+        }
+        state.dirty.add(file);
+        touched++;
+      }
+      return touched;
+    };
+
+    const syncToAll = () => {
+      const key = focusedKey();
+      const file = matrix.files[state.colIdx];
+      if (!key || !file) {
+        state.message = 'Move onto a variable row to sync.';
+        refresh();
+        return;
+      }
+      const entry = findKvEntry(file, key);
+      if (!entry) {
+        state.message = `${key} has no value in ${basename(file.path)} to sync.`;
+        refresh();
+        return;
+      }
+      const touched = applyToAllFiles(key, entry.value);
+      rebuildMatrix();
+      state.message =
+        touched > 0
+          ? `Synced ${key} to ${touched} file(s). Ctrl-S to save.`
+          : `${key} is already in sync.`;
+      refresh();
+    };
+
     const undo = () => {
       const last = state.undo.pop();
       if (!last) {
@@ -842,6 +915,20 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         else if (key.ctrl && key.name === 't') {
           state.showSecrets = !state.showSecrets;
           refresh();
+        } else if (key.ctrl && key.name === 'a' && state.prompt) {
+          // Apply current input value to *every* file (not just the focused
+          // one). Only sensible during edit / add-value prompts where the
+          // input represents a value.
+          const p = state.prompt;
+          if (p.kind === 'edit' || p.kind === 'add-value') {
+            const touched = applyToAllFiles(p.key, promptInput.value);
+            rebuildMatrix();
+            closePrompt(
+              touched > 0
+                ? `Set ${p.key} in ${touched} file(s). Ctrl-S to save.`
+                : `${p.key} already had that value everywhere.`
+            );
+          }
         }
         return;
       }
@@ -944,13 +1031,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           state.pane = 'sidebar';
           return refresh();
         case 'up':
-          state.rowIdx = Math.max(0, state.rowIdx - 1);
+          state.rowIdx = stepRow(state, -1);
           return refresh();
         case 'down':
-          state.rowIdx = Math.min(
-            Math.max(0, state.visibleItems.length - 1),
-            state.rowIdx + 1
-          );
+          state.rowIdx = stepRow(state, 1);
           return refresh();
         case 'left':
           if (state.colIdx === 0) {
@@ -972,6 +1056,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           return startDelete();
         case 'n':
           return startNewFile();
+        case 'equal':
+          return syncToAll();
         case 'v':
           state.driftOnly = !state.driftOnly;
           state.message = state.driftOnly
@@ -1196,8 +1282,9 @@ function refreshFooter(
   } else {
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
-      `↑↓←→ move · Tab files · e edit · a add · d del · n new · c collapse · ` +
-      `^T secrets · ^Z undo · ^S save · / filter · ?/ß help · q quit${dirtyLabel}`;
+      `↑↓←→ move · Tab files · e edit · a add var · d del var · n new file · ` +
+      `= sync to all · c collapse · ^T secrets · ^Z undo · ^S save · ` +
+      `/ filter · ?/ß help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
       `g group: ${state.grouping} · ` +
@@ -1326,6 +1413,31 @@ function groupByPrefix(keys: string[]): string[] {
   return order.flatMap((p) => groups.get(p)!);
 }
 
+/**
+ * Move row focus by `delta` while skipping section dividers that are not
+ * collapsed. The user only needs to land on a divider when its section is
+ * folded — that's the only context in which 'c' on the divider does work
+ * the focused-key path doesn't already cover.
+ */
+function stepRow(state: State, delta: number): number {
+  const items = state.visibleItems;
+  if (items.length === 0) return 0;
+  const canFocus = (i: number) => {
+    const it = items[i];
+    if (!it) return false;
+    if (it.kind === 'key') return true;
+    // divider — focusable only when collapsed
+    return state.collapsed.has(it.ref);
+  };
+  let i = state.rowIdx + delta;
+  while (i >= 0 && i < items.length) {
+    if (canFocus(i)) return i;
+    i += delta;
+  }
+  // No focusable item further along — clamp to current.
+  return state.rowIdx;
+}
+
 function orderedKeys(
   matrix: Matrix,
   state: State,
@@ -1397,11 +1509,15 @@ function buildValueCell(
       icon: { char: '⚠', fg: COLORS.placeholder }
     };
   }
-  const text = formatValue(value, secret);
+  // Empty value: render "(empty)" in dim so the cell isn't confused with a
+  // missing one but the eye still glides past it.
+  const isEmpty = value === '' && !secret;
+  const displayText = isEmpty ? '(empty)' : formatValue(value, secret);
+  const displayFg = isEmpty ? COLORS.fgDim : COLORS.fg;
   if (cell.state === 'differs') {
     return {
-      text,
-      fg: COLORS.fg,
+      text: displayText,
+      fg: displayFg,
       width,
       bg,
       icon: { char: '≠', fg: COLORS.differs }
@@ -1409,15 +1525,15 @@ function buildValueCell(
   }
   if (cell.state === 'extra') {
     return {
-      text,
-      fg: COLORS.fg,
+      text: displayText,
+      fg: displayFg,
       width,
       bg,
       icon: { char: '★', fg: COLORS.extra }
     };
   }
-  // base / same — no icon, neutral text.
-  return { text, fg: COLORS.fg, width, bg };
+  // base / same — no icon.
+  return { text: displayText, fg: displayFg, width, bg };
 }
 
 function keyDrifts(matrix: Matrix, key: string): boolean {
@@ -1534,27 +1650,32 @@ function buildSectionDivider(
   // when the section also has plain differs.
   const baseName = name ?? '(other)';
   const indicator = meta.collapsed ? '▸' : '▾';
-  const headerText = ` ${indicator} ${baseName} `;
-  const statsParts: { text: string; fg: RGBA }[] = [];
+  // Build the label as a list of typed segments so we can colour just the
+  // status icons and numbers, keeping the name + connective glue dim.
+  type Seg = { text: string; fg: RGBA };
+  const segs: Seg[] = [
+    { text: ` ${indicator} ${baseName}  `, fg: COLORS.fgDim }
+  ];
   if (meta.missing > 0) {
-    statsParts.push({
-      text: `✗ ${meta.missing} missing`,
-      fg: COLORS.missing
-    });
+    segs.push({ text: '✗ ', fg: COLORS.missing });
+    segs.push({ text: `${meta.missing}`, fg: COLORS.missing });
+    segs.push({ text: ' missing  ', fg: COLORS.fgDim });
   }
   if (meta.drift > 0) {
-    statsParts.push({
-      text: `${meta.drift}/${meta.total} drift`,
-      fg: COLORS.differs
-    });
+    segs.push({ text: '≠ ', fg: COLORS.differs });
+    segs.push({ text: `${meta.drift}`, fg: COLORS.differs });
+    segs.push({ text: '/', fg: COLORS.fgDim });
+    segs.push({ text: `${meta.total}`, fg: COLORS.differs });
+    segs.push({ text: ' drift  ', fg: COLORS.fgDim });
   }
-  if (statsParts.length === 0) {
-    statsParts.push({ text: `${meta.total} keys`, fg: COLORS.fgDim });
+  if (meta.missing === 0 && meta.drift === 0) {
+    segs.push({ text: `${meta.total}`, fg: COLORS.fgDim });
+    segs.push({ text: ' keys  ', fg: COLORS.fgDim });
   }
-  // ` · ` separator between header and stats; ` · ` between stats segments.
-  const statsLength = statsParts.reduce((sum, p) => sum + p.text.length + 3, 0); // ` · ` = 3 chars
-  const labelLength = headerText.length + statsLength + 1; // trailing space
+  // Pad with a trailing space.
+  segs.push({ text: ' ', fg: COLORS.fgDim });
 
+  const labelLength = segs.reduce((sum, s) => sum + s.text.length, 0);
   const rule = '─';
   const visible = Math.max(0, width - 2);
   const beforeLen = Math.max(2, Math.floor((visible - labelLength) / 2));
@@ -1577,35 +1698,17 @@ function buildSectionDivider(
       wrapMode: 'none'
     })
   );
-  box.add(
-    new TextRenderable(renderer, {
-      id: `${id}-name`,
-      content: headerText,
-      fg: COLORS.fgSection,
-      height: 1,
-      wrapMode: 'none'
-    })
-  );
-  for (const [i, part] of statsParts.entries()) {
+  segs.forEach((seg, i) => {
     box.add(
       new TextRenderable(renderer, {
-        id: `${id}-sep-${i}`,
-        content: '· ',
-        fg: COLORS.fgDim,
+        id: `${id}-seg-${i}`,
+        content: seg.text,
+        fg: seg.fg,
         height: 1,
         wrapMode: 'none'
       })
     );
-    box.add(
-      new TextRenderable(renderer, {
-        id: `${id}-stat-${i}`,
-        content: `${part.text} `,
-        fg: part.fg,
-        height: 1,
-        wrapMode: 'none'
-      })
-    );
-  }
+  });
   box.add(
     new TextRenderable(renderer, {
       id: `${id}-trail`,
