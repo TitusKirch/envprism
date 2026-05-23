@@ -30,6 +30,12 @@ src/
   commands/
     diff.ts              text / JSON / --check diff output
     tui.ts               default command; dynamic-imports tui/app.ts
+    init.ts              scaffolds envprism.config.ts (wx unless --force)
+  config/
+    schema.ts            config types + DEFAULT_CONFIG (canonical defaults)
+    define.ts            defineEnvprismConfig + types — `envprism/config` entry (RGBA-free)
+    load.ts              loadEnvprismConfig: walk-up from cwd, --config / ENVPRISM_CONFIG
+    resolve.ts           mergeConfig (defu + replace/extend lists), resolveHeuristics
   core/
     parse.ts             .env → EnvEntry[] (round-trippable)
     serialize.ts         EnvEntry[] → string + rebuildKvLine()

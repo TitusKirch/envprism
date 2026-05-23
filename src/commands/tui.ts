@@ -33,7 +33,7 @@ export async function runTui(args: TuiInvocation): Promise<void> {
   }
 
   const base = resolveBase(files, args.base, {
-    exampleName: config.base.exampleName,
+    name: config.base.name,
     priority: config.base.priority
   });
   if (!base) {

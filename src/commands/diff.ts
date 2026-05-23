@@ -54,7 +54,7 @@ export const diffCommand = defineCommand({
     }
 
     const base = resolveBase(files, args.base, {
-      exampleName: config.base.exampleName,
+      name: config.base.name,
       priority: config.base.priority
     });
     if (!base) {

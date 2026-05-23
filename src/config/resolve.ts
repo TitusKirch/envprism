@@ -87,7 +87,7 @@ export function mergeConfig(user: EnvprismUserConfig = {}): EnvprismConfig {
         user.discovery?.exampleFirst ?? DEFAULT_CONFIG.discovery.exampleFirst
     },
     base: {
-      exampleName: user.base?.exampleName ?? DEFAULT_CONFIG.base.exampleName,
+      name: user.base?.name ?? DEFAULT_CONFIG.base.name,
       priority: user.base?.priority ?? DEFAULT_CONFIG.base.priority
     },
     heuristics: {

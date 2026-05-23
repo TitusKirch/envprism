@@ -17,7 +17,7 @@ export interface DiscoveryConfig {
 
 export interface BaseConfig {
   /** Filename treated as the default base when present. */
-  exampleName: string;
+  name: string;
   /** Ordered basenames tried before falling back to the first file. */
   priority: string[];
 }
@@ -112,7 +112,7 @@ export const DEFAULT_CONFIG: EnvprismConfig = {
     exampleFirst: true
   },
   base: {
-    exampleName: '.env.example',
+    name: '.env.example',
     priority: []
   },
   heuristics: {

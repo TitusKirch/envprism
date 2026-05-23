@@ -19,7 +19,7 @@ export default {
     // exampleFirst: true
   },
   base: {
-    exampleName: '.env.example'
+    name: '.env.example'
     // priority: ['.env.shared']
   },
   heuristics: {

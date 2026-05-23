@@ -14,7 +14,7 @@
 export default {
   base: {
     // The fixtures use .env.example as the reference (also the default).
-    exampleName: '.env.example'
+    name: '.env.example'
   },
   heuristics: {
     // The defaults already mask SECRET/TOKEN/KEY/DSN/PASSWORD… keys, but the

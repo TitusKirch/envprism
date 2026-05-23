@@ -17,7 +17,7 @@ describe('DEFAULT_CONFIG', () => {
       '~',
       '.bak'
     ]);
-    expect(DEFAULT_CONFIG.base.exampleName).toBe('.env.example');
+    expect(DEFAULT_CONFIG.base.name).toBe('.env.example');
     expect(DEFAULT_CONFIG.heuristics.secretTokens).toContain('SECRET');
     expect(DEFAULT_CONFIG.heuristics.secretTokens).toContain('DSN');
     expect(DEFAULT_CONFIG.heuristics.grouping).toBe('auto');
