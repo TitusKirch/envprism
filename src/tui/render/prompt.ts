@@ -1,11 +1,11 @@
-import { BoxRenderable, type CliRenderer, TextRenderable } from '@opentui/core';
+import { BoxRenderable, TextRenderable } from '@opentui/core';
 import { isSecretKey } from '@/core/mask.ts';
-import type { Matrix } from '@/core/matrix.ts';
 import { basename } from 'pathe';
+import type { TuiContext } from '@tui/context.ts';
 import { findKvEntry, formatValue } from '@tui/format.ts';
 import { removeAllChildren } from '@tui/render/dom.ts';
 import { COLORS } from '@tui/theme.ts';
-import type { Prompt, State } from '@tui/types.ts';
+import type { Prompt } from '@tui/types.ts';
 
 export function promptLabelText(p: Prompt): string {
   switch (p.kind) {
@@ -20,14 +20,13 @@ export function promptLabelText(p: Prompt): string {
   }
 }
 
-export function refreshPrompt(
-  promptBox: BoxRenderable,
-  promptBody: BoxRenderable,
-  promptHint: TextRenderable,
-  renderer: CliRenderer,
-  matrix: Matrix,
-  state: State
-): void {
+export function refreshPrompt(ctx: TuiContext): void {
+  const {
+    el: { promptBox, promptBody, promptHint },
+    renderer,
+    matrix,
+    state
+  } = ctx;
   const open = state.mode === 'prompt' && state.prompt !== null;
   promptBox.visible = open;
   if (!open || !state.prompt) return;

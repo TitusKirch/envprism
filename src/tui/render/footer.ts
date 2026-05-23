@@ -4,9 +4,9 @@ import {
   type RGBA,
   TextRenderable
 } from '@opentui/core';
+import type { TuiContext } from '@tui/context.ts';
 import { removeAllChildren } from '@tui/render/dom.ts';
 import { COLORS } from '@tui/theme.ts';
-import type { State } from '@tui/types.ts';
 
 export interface FooterSeg {
   text: string;
@@ -46,13 +46,12 @@ export function renderHintBox(
   });
 }
 
-export function refreshFooter(
-  hintA: BoxRenderable,
-  hintB: BoxRenderable,
-  status: TextRenderable,
-  renderer: CliRenderer,
-  state: State
-): void {
+export function refreshFooter(ctx: TuiContext): void {
+  const {
+    el: { hintA, hintB, status },
+    renderer,
+    state
+  } = ctx;
   const dirty = state.dirty.size;
   const dirtyTail: FooterSeg[] =
     dirty > 0

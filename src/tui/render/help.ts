@@ -1,18 +1,15 @@
-import {
-  BoxRenderable,
-  type CliRenderer,
-  ScrollBoxRenderable
-} from '@opentui/core';
+import { BoxRenderable, ScrollBoxRenderable } from '@opentui/core';
+import type { TuiContext } from '@tui/context.ts';
 import { buildHelpLines } from '@tui/help.ts';
 import { buildHelpRow } from '@tui/render/builders.ts';
 import { removeAllChildren } from '@tui/render/dom.ts';
-import type { State } from '@tui/types.ts';
 
-export function refreshHelp(
-  helpBox: BoxRenderable,
-  renderer: CliRenderer,
-  state: State
-): void {
+export function refreshHelp(ctx: TuiContext): void {
+  const {
+    el: { helpBox },
+    renderer,
+    state
+  } = ctx;
   helpBox.visible = state.helpOpen;
   if (!state.helpOpen) return;
   removeAllChildren(helpBox);

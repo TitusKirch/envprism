@@ -1,14 +1,11 @@
-import type { BoxRenderable, TextRenderable } from '@opentui/core';
-import type { Matrix } from '@/core/matrix.ts';
-import type { State } from '@tui/types.ts';
+import type { TuiContext } from '@tui/context.ts';
 
-export function refreshFilter(
-  filterBox: BoxRenderable,
-  filterField: TextRenderable,
-  filterStatus: TextRenderable,
-  matrix: Matrix,
-  state: State
-): void {
+export function refreshFilter(ctx: TuiContext): void {
+  const {
+    el: { filterBox, filterField, filterStatus },
+    matrix,
+    state
+  } = ctx;
   const open = state.mode === 'filter';
   filterBox.visible = open;
   if (!open) return;

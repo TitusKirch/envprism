@@ -1,11 +1,7 @@
-import type {
-  BoxRenderable,
-  CliRenderer,
-  ScrollBoxRenderable
-} from '@opentui/core';
 import { isSecretKey } from '@/core/mask.ts';
 import type { Matrix } from '@/core/matrix.ts';
 import { basename } from 'pathe';
+import type { TuiContext } from '@tui/context.ts';
 import { sectionMetadata } from '@tui/grouping.ts';
 import {
   buildRow,
@@ -14,7 +10,12 @@ import {
   type CellSpec
 } from '@tui/render/builders.ts';
 import { removeAllChildren } from '@tui/render/dom.ts';
-import { COLORS, KEY_COL_WIDTH } from '@tui/theme.ts';
+import {
+  COLORS,
+  KEY_COL_WIDTH,
+  SIDEBAR_WIDTH,
+  VALUE_COL_MIN
+} from '@tui/theme.ts';
 import type { State } from '@tui/types.ts';
 
 export function matrixTitle(matrix: Matrix, state: State): string {
@@ -28,16 +29,32 @@ export function matrixTitle(matrix: Matrix, state: State): string {
   return ` Matrix · ${parts.join(' · ')} `;
 }
 
-export function refreshMatrix(
-  matrixBox: BoxRenderable,
-  headerHost: BoxRenderable,
-  scrollBox: ScrollBoxRenderable,
-  renderer: CliRenderer,
-  matrix: Matrix,
-  state: State,
-  valueColWidth: number,
-  sectionOf: (key: string) => string | undefined
-): void {
+/**
+ * Available width inside the matrix box (subtract sidebar, both borders and the
+ * matrix's horizontal padding). If columns would shrink below VALUE_COL_MIN to
+ * fit, keep them at the minimum and let the ScrollBox handle the overflow.
+ */
+export function computeValueColWidth(ctx: TuiContext): number {
+  const { renderer, matrix } = ctx;
+  const available = Math.max(
+    0,
+    renderer.terminalWidth - SIDEBAR_WIDTH - 6 - KEY_COL_WIDTH
+  );
+  const fair = matrix.files.length
+    ? Math.floor(available / matrix.files.length)
+    : VALUE_COL_MIN;
+  return Math.max(VALUE_COL_MIN, fair);
+}
+
+export function refreshMatrix(ctx: TuiContext): void {
+  const {
+    el: { matrixBox, headerHost, scrollBox },
+    renderer,
+    matrix,
+    state
+  } = ctx;
+  const sectionOf = ctx.sectionOf;
+  const valueColWidth = computeValueColWidth(ctx);
   matrixBox.title = matrixTitle(matrix, state);
   removeAllChildren(headerHost);
   removeAllChildren(scrollBox.content);

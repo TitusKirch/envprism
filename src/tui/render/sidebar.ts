@@ -1,23 +1,17 @@
-import {
-  BoxRenderable,
-  type CliRenderer,
-  type RGBA,
-  TextRenderable
-} from '@opentui/core';
-import type { Matrix } from '@/core/matrix.ts';
-import type { EnvFile } from '@/core/types.ts';
+import { BoxRenderable, type RGBA, TextRenderable } from '@opentui/core';
 import { basename } from 'pathe';
+import type { TuiContext } from '@tui/context.ts';
 import { removeAllChildren } from '@tui/render/dom.ts';
 import { COLORS } from '@tui/theme.ts';
-import type { State } from '@tui/types.ts';
 
-export function refreshSidebar(
-  sidebar: BoxRenderable,
-  renderer: CliRenderer,
-  matrix: Matrix,
-  allFiles: EnvFile[],
-  state: State
-): void {
+export function refreshSidebar(ctx: TuiContext): void {
+  const {
+    el: { sidebar },
+    renderer,
+    matrix,
+    allFiles,
+    state
+  } = ctx;
   const total = allFiles.length;
   const enabled = state.enabled.size;
   sidebar.title =

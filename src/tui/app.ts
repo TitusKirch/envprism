@@ -10,13 +10,7 @@ import { basename, dirname, join } from 'pathe';
 import { buildMatrix, type Matrix } from '@/core/matrix.ts';
 import { rebuildKvLine, serializeEnv } from '@/core/serialize.ts';
 import type { EnvFile } from '@/core/types.ts';
-import {
-  COLORS,
-  KEY_COL_WIDTH,
-  ROW_GAP,
-  SIDEBAR_WIDTH,
-  VALUE_COL_MIN
-} from '@tui/theme.ts';
+import { COLORS, ROW_GAP, SIDEBAR_WIDTH } from '@tui/theme.ts';
 import {
   KEY_RE,
   type MatrixItem,
@@ -37,20 +31,14 @@ import {
   prefixSection,
   stepRow
 } from '@tui/grouping.ts';
-import { refreshFilter } from '@tui/render/filter.ts';
-import { refreshFooter } from '@tui/render/footer.ts';
-import { refreshHelp } from '@tui/render/help.ts';
-import { refreshMatrix } from '@tui/render/matrix.ts';
-import { refreshPrompt } from '@tui/render/prompt.ts';
-import { refreshSidebar } from '@tui/render/sidebar.ts';
+import type { TuiContext, TuiElements } from '@tui/context.ts';
+import { refreshAll } from '@tui/render/index.ts';
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
   // The full discovered file list never changes; the matrix is rebuilt from
   // the currently *enabled* subset whenever the user toggles a file.
   const allFiles = initialMatrix.files.slice();
-  let currentBase = initialMatrix.base;
-  let matrix = initialMatrix;
 
   // Prefer banner grouping when the base file actually has section banners;
   // otherwise prefix grouping is more useful out of the box.
@@ -64,7 +52,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     colIdx: 0,
     prompt: null,
     dirty: new Set(),
-    visibleKeys: matrix.keys.slice(),
+    visibleKeys: initialMatrix.keys.slice(),
     visibleItems: [],
     message: null,
     driftOnly: false,
@@ -318,10 +306,58 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   renderer.root.add(helpBox);
 
-  // --- State helpers ---
-  const sectionOf = (key: string): string | undefined =>
-    state.grouping === 'banner' ? matrix.sectionOf(key) : prefixSection(key);
+  // --- Context ---
+  const el: TuiElements = {
+    root,
+    body,
+    sidebar,
+    matrixBox,
+    headerHost,
+    scrollBox,
+    footer,
+    hintA,
+    hintB,
+    status,
+    filterBox,
+    filterField,
+    filterStatus,
+    promptBox,
+    promptBody,
+    promptHint,
+    helpBox,
+    dimOverlay
+  };
 
+  // Coalesce burst-y refreshes (held arrow keys, fast filter typing) into one
+  // render per microtask flush. refreshAll rebuilds every matrix row, which is
+  // expensive per keystroke; batching keeps held keys in opentui's own redraw
+  // loop instead of our re-render.
+  let refreshScheduled = false;
+  const ctx: TuiContext = {
+    renderer,
+    state,
+    allFiles,
+    el,
+    matrix: initialMatrix,
+    currentBase: initialMatrix.base,
+    refresh: () => {
+      if (refreshScheduled) return;
+      refreshScheduled = true;
+      queueMicrotask(() => {
+        refreshScheduled = false;
+        refreshAll(ctx);
+      });
+    },
+    refreshNow: () => refreshAll(ctx),
+    sectionOf: (key: string): string | undefined =>
+      state.grouping === 'banner'
+        ? ctx.matrix.sectionOf(key)
+        : prefixSection(key)
+  };
+  const refresh = ctx.refresh;
+  const sectionOf = ctx.sectionOf;
+
+  // --- State helpers ---
   const recomputeVisibleKeys = () => {
     // Two parallel structures:
     //   visibleKeys  — just the key names (used by editing helpers)
@@ -330,12 +366,12 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     // so the user can navigate onto one and expand it with 'c'.
     const visibleKeys: string[] = [];
     const items: MatrixItem[] = [];
-    const orderedAll = orderedKeys(matrix, state, sectionOf);
+    const orderedAll = orderedKeys(ctx.matrix, state, sectionOf);
     const seen = new Set<string>();
     const focusedRef = state.visibleItems[state.rowIdx]?.ref;
     for (const k of orderedAll) {
       if (!matchesFilter(k, state.filter)) continue;
-      if (state.driftOnly && !keyDrifts(matrix, k)) continue;
+      if (state.driftOnly && !keyDrifts(ctx.matrix, k)) continue;
       const sec = sectionOf(k);
       const secKey = SECTION_COLLAPSE_KEY(sec);
       if (!seen.has(secKey)) {
@@ -369,14 +405,14 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
   const rebuildMatrix = () => {
     const enabledList = allFiles.filter((f) => state.enabled.has(f));
-    if (!state.enabled.has(currentBase)) {
+    if (!state.enabled.has(ctx.currentBase)) {
       // Base got disabled — promote the first enabled file.
       const next = enabledList[0];
-      if (next) currentBase = next;
+      if (next) ctx.currentBase = next;
     }
-    matrix = buildMatrix(enabledList, currentBase);
-    if (state.colIdx >= matrix.files.length) {
-      state.colIdx = Math.max(0, matrix.files.length - 1);
+    ctx.matrix = buildMatrix(enabledList, ctx.currentBase);
+    if (state.colIdx >= ctx.matrix.files.length) {
+      state.colIdx = Math.max(0, ctx.matrix.files.length - 1);
     }
     if (state.sidebarIdx >= allFiles.length) {
       state.sidebarIdx = Math.max(0, allFiles.length - 1);
@@ -389,59 +425,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     if (idx >= 0) state.rowIdx = idx;
   };
 
-  const computeValueColWidth = (): number => {
-    // Available width inside the matrix box (subtract sidebar, both borders
-    // and the matrix's horizontal padding). If columns would have to shrink
-    // below VALUE_COL_MIN to fit the viewport, keep them at the minimum and
-    // let the ScrollBox handle the horizontal overflow.
-    const available = Math.max(
-      0,
-      renderer.terminalWidth - SIDEBAR_WIDTH - 6 - KEY_COL_WIDTH
-    );
-    const fair = matrix.files.length
-      ? Math.floor(available / matrix.files.length)
-      : VALUE_COL_MIN;
-    return Math.max(VALUE_COL_MIN, fair);
-  };
-
-  const refreshNow = () => {
-    const valueColWidth = computeValueColWidth();
-    refreshSidebar(sidebar, renderer, matrix, allFiles, state);
-    refreshMatrix(
-      matrixBox,
-      headerHost,
-      scrollBox,
-      renderer,
-      matrix,
-      state,
-      valueColWidth,
-      sectionOf
-    );
-    refreshFooter(hintA, hintB, status, renderer, state);
-    refreshPrompt(promptBox, promptBody, promptHint, renderer, matrix, state);
-    refreshHelp(helpBox, renderer, state);
-    refreshFilter(filterBox, filterField, filterStatus, matrix, state);
-    dimOverlay.visible =
-      state.helpOpen || state.mode === 'prompt' || state.mode === 'filter';
-  };
-
-  // Coalesce burst-y refreshes (held arrow keys, fast filter typing) into
-  // one render per microtask flush. The full refreshNow rebuilds every
-  // matrix row, which is expensive when called for every keystroke; with
-  // batching, holding an arrow key spends most of the time in opentui's
-  // own redraw loop instead of in our re-render.
-  let refreshScheduled = false;
-  const refresh = () => {
-    if (refreshScheduled) return;
-    refreshScheduled = true;
-    queueMicrotask(() => {
-      refreshScheduled = false;
-      refreshNow();
-    });
-  };
-
   recomputeVisibleKeys();
-  refreshNow();
+  ctx.refreshNow();
 
   // --- Interaction ---
   return new Promise<void>((resolve) => {
@@ -475,7 +460,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
     const startEdit = () => {
       const key = focusedKey();
-      const file = matrix.files[state.colIdx];
+      const file = ctx.matrix.files[state.colIdx];
       if (!key || !file) {
         state.message = 'Move onto a variable row to edit.';
         refresh();
@@ -488,7 +473,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     };
 
     const startAdd = () => {
-      const file = matrix.files[state.colIdx];
+      const file = ctx.matrix.files[state.colIdx];
       if (!file) return;
       openPrompt({ kind: 'add-key', file }, '', 'NEW_KEY');
     };
@@ -499,7 +484,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
     const startDelete = () => {
       const key = focusedKey();
-      const file = matrix.files[state.colIdx];
+      const file = ctx.matrix.files[state.colIdx];
       if (!key || !file) {
         state.message = 'Move onto a variable row to delete.';
         refresh();
@@ -545,14 +530,14 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     const setBase = () => {
       const file = allFiles[state.sidebarIdx];
       if (!file) return;
-      if (file === currentBase) {
+      if (file === ctx.currentBase) {
         state.message = `${basename(file.path)} is already the base.`;
         refresh();
         return;
       }
       const wasDisabled = !state.enabled.has(file);
       if (wasDisabled) state.enabled.add(file);
-      currentBase = file;
+      ctx.currentBase = file;
       rebuildMatrix();
       state.message = wasDisabled
         ? `${basename(file.path)} is now the base (re-enabled).`
@@ -565,7 +550,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       // Ctrl-A from the edit prompt. Each per-file mutation is undone
       // individually (one Ctrl-Z per file) — not perfect but predictable.
       let touched = 0;
-      for (const file of matrix.files) {
+      for (const file of ctx.matrix.files) {
         const existing = findKvEntry(file, key);
         if (existing) {
           if (existing.value === value) continue;
@@ -591,7 +576,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
 
     const syncToAll = () => {
       const key = focusedKey();
-      const file = matrix.files[state.colIdx];
+      const file = ctx.matrix.files[state.colIdx];
       if (!key || !file) {
         state.message = 'Move onto a variable row to sync.';
         refresh();
@@ -703,7 +688,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         markModified(p.key, p.file);
         rebuildMatrix();
         focusKey(p.key);
-        state.colIdx = matrix.files.indexOf(p.file);
+        state.colIdx = ctx.matrix.files.indexOf(p.file);
         closePrompt(
           `Added ${p.key} to ${basename(p.file.path)}. Ctrl-S to save.`
         );
@@ -722,7 +707,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           refresh();
           return;
         }
-        const newPath = join(dirname(currentBase.path), name);
+        const newPath = join(dirname(ctx.currentBase.path), name);
         if (allFiles.some((f) => f.path === newPath)) {
           state.message = `${name} already exists.`;
           refresh();
@@ -733,7 +718,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         state.enabled.add(newFile);
         state.dirty.add(newFile);
         rebuildMatrix();
-        state.colIdx = matrix.files.indexOf(newFile);
+        state.colIdx = ctx.matrix.files.indexOf(newFile);
         closePrompt(`Created ${name}. Ctrl-S to write to disk.`);
         return;
       }
@@ -950,7 +935,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           state.colIdx = Math.max(0, state.colIdx - 1);
           return refresh();
         case 'right':
-          state.colIdx = Math.min(matrix.files.length - 1, state.colIdx + 1);
+          state.colIdx = Math.min(
+            ctx.matrix.files.length - 1,
+            state.colIdx + 1
+          );
           return refresh();
         case 'e':
         case 'return':
