@@ -347,31 +347,16 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     id: 'prompt-input',
     placeholder: ''
   });
-  const promptHintConfirm = new TextRenderable(renderer, {
-    id: 'prompt-hint-confirm',
-    content: 'Enter · confirm',
+  const promptHint = new TextRenderable(renderer, {
+    id: 'prompt-hint',
+    content: 'Enter · confirm    Esc · cancel    Ctrl-T · show/mask secrets',
     fg: COLORS.fgDim,
     height: 1,
-    marginTop: 2
-  });
-  const promptHintCancel = new TextRenderable(renderer, {
-    id: 'prompt-hint-cancel',
-    content: 'Esc · cancel',
-    fg: COLORS.fgDim,
-    height: 1,
-    marginTop: 1
-  });
-  const promptHintToggle = new TextRenderable(renderer, {
-    id: 'prompt-hint-toggle',
-    content: 'Ctrl-T · show/mask secrets',
-    fg: COLORS.fgDim,
-    height: 1,
-    marginTop: 1
+    marginTop: 2,
+    wrapMode: 'none'
   });
   promptBox.add(promptBody);
-  promptBox.add(promptHintConfirm);
-  promptBox.add(promptHintCancel);
-  promptBox.add(promptHintToggle);
+  promptBox.add(promptHint);
   renderer.root.add(promptBox);
 
   // Full-screen dim layer drawn below the prompt and help overlays so the
@@ -991,13 +976,11 @@ function refreshSidebar(
       `${isBase ? '★' : ' '} ` +
       `${isFocusCol ? '▸' : ' '} ` +
       `${isEnabled ? '✓' : '☐'}`;
-    const fg = !isEnabled
-      ? COLORS.fgDim
-      : isDirty
-        ? COLORS.fgDirty
-        : isBase
-          ? COLORS.fgBase
-          : COLORS.fg;
+    // Foreground colour encodes role only: disabled (dim) / base (gold) /
+    // normal. Dirty state is already shown by the leading ● marker, so we
+    // don't recolour the filename for it — that previously made a dirty base
+    // flip from gold to cyan and felt inconsistent.
+    const fg = !isEnabled ? COLORS.fgDim : isBase ? COLORS.fgBase : COLORS.fg;
     sidebar.add(
       new TextRenderable(renderer, {
         id: `file-${file.path}`,
@@ -1165,8 +1148,8 @@ function refreshPrompt(
       26,
       Math.max(...matrix.files.map((f) => basename(f.path).length + 2))
     );
-    // input(1) + table header+margin(2) + rows(n) + 3 hint lines (3+2+2) + box chrome(4)
-    promptBox.height = Math.min(24, 14 + matrix.files.length);
+    // input(1) + table header+margin(2) + rows(n) + hint(1+margin 2) + chrome(4)
+    promptBox.height = Math.min(22, 10 + matrix.files.length);
 
     promptBody.add(
       new TextRenderable(renderer, {
@@ -1212,7 +1195,7 @@ function refreshPrompt(
       promptBody.add(row);
     }
   } else {
-    promptBox.height = 12;
+    promptBox.height = 8;
   }
 }
 
