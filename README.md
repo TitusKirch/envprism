@@ -4,6 +4,12 @@
 
 **One set of variables, refracted into many environment views — a TUI for managing `.env*` files side by side**
 
+[![npm Version](https://img.shields.io/npm/v/envprism.svg?style=flat-square&color=4f46e5)](https://www.npmjs.com/package/envprism)
+[![Downloads](https://img.shields.io/npm/dm/envprism.svg?style=flat-square&color=4f46e5)](https://www.npmjs.com/package/envprism)
+[![Tests](https://img.shields.io/github/actions/workflow/status/TitusKirch/envprism/ci.yml?branch=main&style=flat-square&label=tests)](https://github.com/TitusKirch/envprism/actions/workflows/ci.yml)
+[![Bun](https://img.shields.io/badge/bun-1.3%2B-8993be?style=flat-square)](https://bun.sh/)
+[![License: MIT](https://img.shields.io/npm/l/envprism.svg?style=flat-square&color=10b981)](LICENSE)
+
 ![envprism TUI preview](.github/assets/envprism-tui.gif)
 
 </div>
