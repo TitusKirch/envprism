@@ -138,10 +138,7 @@ function buildHelpLines(): HelpLine[] {
     { kind: 'entry', text: '  /                 Filter keys' },
     { kind: 'entry', text: '  v                 All keys ↔ drift-only' },
     { kind: 'entry', text: '  g                 Group by prefix ↔ banner' },
-    {
-      kind: 'entry',
-      text: '  s / Ctrl-T        Show / mask secret values'
-    },
+    { kind: 'entry', text: '  Ctrl-T            Show / mask secret values' },
     { kind: 'blank' },
     { kind: 'header', text: 'Help & exit' },
     { kind: 'entry', text: '  ? / ß             Toggle this overlay' },
@@ -388,14 +385,16 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   });
   renderer.root.add(dimOverlay);
 
-  // Floating help overlay. Hidden until '?' / 'ß' opens it.
+  // Floating help overlay. Hidden until '?' / 'ß' opens it. Two-column grid
+  // so the overlay stays compact vertically and doesn't run off the bottom
+  // on small terminals.
   const helpBox = new BoxRenderable(renderer, {
     id: 'help-overlay',
     position: 'absolute',
     top: 2,
-    left: '15%',
-    right: '15%',
-    height: 40,
+    left: '8%',
+    right: '8%',
+    height: 24,
     zIndex: 100,
     border: true,
     borderStyle: 'rounded',
@@ -404,11 +403,40 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     paddingY: 1,
     visible: false,
     backgroundColor: RGBA.fromHex('#1a1a1a'),
-    flexDirection: 'column'
+    flexDirection: 'row',
+    columnGap: 3
   });
-  for (const [i, line] of buildHelpLines().entries()) {
-    helpBox.add(buildHelpRow(renderer, `help-${i}`, line));
+  const helpLeft = new BoxRenderable(renderer, {
+    id: 'help-left',
+    flexDirection: 'column',
+    flexGrow: 1,
+    flexBasis: 0
+  });
+  const helpRight = new BoxRenderable(renderer, {
+    id: 'help-right',
+    flexDirection: 'column',
+    flexGrow: 1,
+    flexBasis: 0
+  });
+  const helpLines = buildHelpLines();
+  // Split at the first blank line after the half-way mark so columns break on
+  // a group boundary, not mid-section.
+  const half = Math.floor(helpLines.length / 2);
+  let splitIdx = half;
+  for (let i = half; i < helpLines.length; i++) {
+    if (helpLines[i]?.kind === 'blank') {
+      splitIdx = i + 1;
+      break;
+    }
   }
+  helpLines.slice(0, splitIdx).forEach((line, i) => {
+    helpLeft.add(buildHelpRow(renderer, `help-l-${i}`, line));
+  });
+  helpLines.slice(splitIdx).forEach((line, i) => {
+    helpRight.add(buildHelpRow(renderer, `help-r-${i}`, line));
+  });
+  helpBox.add(helpLeft);
+  helpBox.add(helpRight);
   renderer.root.add(helpBox);
 
   // --- State helpers ---
@@ -905,15 +933,6 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
             : 'Full view.';
           recomputeVisibleKeys();
           return refresh();
-        case 's':
-          if (!key.ctrl) {
-            state.showSecrets = !state.showSecrets;
-            state.message = state.showSecrets
-              ? 'Showing secret values in plain text.'
-              : 'Masking secret values.';
-            return refresh();
-          }
-          return;
         case 'c': {
           if (key.shift) {
             // Capital C — expand every collapsed section. Use this when all
@@ -1084,8 +1103,15 @@ function refreshMatrix(
     }
     if (state.collapsed.has(sectionKey)) continue;
     const secret = isSecretKey(key) && !state.showSecrets;
+    // Key is "extra to base" when the base file does not have it; mark it
+    // once in the key column instead of per-cell.
+    const extraKey = matrix.cell(key, matrix.base).state === 'missing';
     const cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[] = [
-      { text: key, fg: COLORS.fg, width: KEY_COL_WIDTH }
+      {
+        text: extraKey ? `★ ${key}` : key,
+        fg: extraKey ? COLORS.extra : COLORS.fg,
+        width: KEY_COL_WIDTH
+      }
     ];
     for (let c = 0; c < matrix.files.length; c++) {
       const file = matrix.files[c]!;
@@ -1145,12 +1171,12 @@ function refreshFooter(
   } else {
     // Line 1: actions (always visible). Line 2: current modes.
     hintA.content =
-      `↑↓←→ move · Tab files · e edit · a add · d del · n new · ` +
-      `c collapse · ^Z undo · ^S save · / filter · ?/ß help · q quit${dirtyLabel}`;
+      `↑↓←→ move · Tab files · e edit · a add · d del · n new · c collapse · ` +
+      `^T secrets · ^Z undo · ^S save · / filter · ?/ß help · q quit${dirtyLabel}`;
     hintB.content =
       `v view: ${state.driftOnly ? 'drift' : 'all'} · ` +
       `g group: ${state.grouping} · ` +
-      `s/^T secrets: ${state.showSecrets ? 'shown' : 'masked'}`;
+      `secrets: ${state.showSecrets ? 'shown' : 'masked'}`;
   }
   filterInput.visible = state.mode === 'filter';
   status.content = state.message ?? '';
@@ -1582,8 +1608,10 @@ function renderCellText(
   // Empty values stay visually empty so they aren't confused with a real
   // value of "—". The key column on the left still anchors the row.
   const formatted = formatValue(value, secret);
-  if (cellState === 'extra') return `★ ${formatted}`;
   if (cellState === 'differs') return `≠ ${formatted}`;
+  // 'extra' state intentionally omits a per-cell ★ — the asymmetry is in
+  // the base column, not in the value. The key column gets a single ★
+  // prefix instead so the user sees one indicator per row, not N.
   return formatted;
 }
 
