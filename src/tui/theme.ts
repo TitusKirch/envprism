@@ -1,32 +1,43 @@
 import { RGBA } from '@opentui/core';
+import { DEFAULT_THEME_HEX, resolveThemeHex } from '@/config/resolve.ts';
+import type { LayoutConfig, ThemeConfig, ThemeKey } from '@/config/schema.ts';
 
 // Three semantic colours only. Everything else is grayscale so the eye
-// doesn't get pulled in five directions.
-export const COLORS = {
-  fg: RGBA.fromHex('#cccccc'),
-  fgDim: RGBA.fromHex('#666666'),
-  fgHeader: RGBA.fromHex('#ffffff'),
-  // accent — base file + section names (blue/purple, single accent for
-  // navigational anchors).
-  fgBase: RGBA.fromHex('#82aaff'),
-  fgSection: RGBA.fromHex('#82aaff'),
-  // drift/extra/placeholder — same yellow. They describe disagreement with
-  // the base file, all one semantic.
-  differs: RGBA.fromHex('#ffd866'),
-  extra: RGBA.fromHex('#ffd866'),
-  placeholder: RGBA.fromHex('#ffd866'),
-  // user-made changes (modified cells, dirty files, unsaved counter) — green.
-  // Different colour from drift on purpose: "I just touched this" is a
-  // different signal from "this disagrees with the base".
-  modified: RGBA.fromHex('#7fce6a'),
-  fgDirty: RGBA.fromHex('#7fce6a'),
-  // problem — value-is-missing red. Reserved exclusively for missing.
-  missing: RGBA.fromHex('#ff6b6b'),
-  focusBg: RGBA.fromHex('#3a3f4b')
-};
+// doesn't get pulled in five directions. The hex source of truth lives in
+// resolve.ts (DEFAULT_THEME_HEX) so the merge logic stays RGBA-free.
 
-export const KEY_COL_WIDTH = 22;
-export const VALUE_COL_MIN = 18;
-export const SIDEBAR_WIDTH = 30;
-export const ROW_GAP = 0;
-export const CELL_PAD_X = 1;
+export type ResolvedTheme = Record<ThemeKey, RGBA>;
+
+/** Resolve a partial hex theme into RGBA values (gaps + invalid → defaults). */
+export function resolveTheme(
+  theme: ThemeConfig = {},
+  warn?: (msg: string) => void
+): ResolvedTheme {
+  const hex = resolveThemeHex(theme, warn);
+  const out = {} as ResolvedTheme;
+  for (const key of Object.keys(DEFAULT_THEME_HEX) as ThemeKey[]) {
+    out[key] = RGBA.fromHex(hex[key]);
+  }
+  return out;
+}
+
+/** The default resolved palette (was previously the `COLORS` constant). */
+export const DEFAULT_THEME: ResolvedTheme = resolveTheme();
+
+export interface ResolvedLayout {
+  KEY_COL_WIDTH: number;
+  VALUE_COL_MIN: number;
+  SIDEBAR_WIDTH: number;
+  ROW_GAP: number;
+  CELL_PAD_X: number;
+}
+
+export function resolveLayout(layout: LayoutConfig): ResolvedLayout {
+  return {
+    KEY_COL_WIDTH: layout.keyColWidth,
+    VALUE_COL_MIN: layout.valueColMin,
+    SIDEBAR_WIDTH: layout.sidebarWidth,
+    ROW_GAP: layout.rowGap,
+    CELL_PAD_X: layout.cellPadX
+  };
+}

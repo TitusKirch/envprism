@@ -8,7 +8,7 @@ import {
   SECTION_COLLAPSE_KEY,
   stepRow
 } from '@tui/grouping.ts';
-import { type MatrixItem, UNDO_LIMIT, type UndoEntry } from '@tui/types.ts';
+import type { MatrixItem, UndoEntry } from '@tui/types.ts';
 
 export function cellKey(key: string, file: EnvFile): string {
   return `${key}|${file.path}`;
@@ -24,7 +24,7 @@ export function markModified(
 
 export function pushUndo(ctx: TuiContext, entry: UndoEntry): void {
   ctx.state.undo.push(entry);
-  if (ctx.state.undo.length > UNDO_LIMIT) ctx.state.undo.shift();
+  if (ctx.state.undo.length > ctx.config.tui.undoLimit) ctx.state.undo.shift();
 }
 
 export function focusedKey(ctx: TuiContext): string | null {

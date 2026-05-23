@@ -1,10 +1,8 @@
 import { BoxRenderable, TextRenderable } from '@opentui/core';
-import { isSecretKey } from '@/core/mask.ts';
 import { basename } from 'pathe';
 import type { TuiContext } from '@tui/context.ts';
 import { findKvEntry, formatValue } from '@tui/format.ts';
 import { removeAllChildren } from '@tui/render/dom.ts';
-import { COLORS } from '@tui/theme.ts';
 import type { Prompt } from '@tui/types.ts';
 
 export function promptLabelText(p: Prompt): string {
@@ -25,7 +23,9 @@ export function refreshPrompt(ctx: TuiContext): void {
     el: { promptBox, promptBody, promptHint },
     renderer,
     matrix,
-    state
+    state,
+    theme,
+    heuristics
   } = ctx;
   const open = state.mode === 'prompt' && state.prompt !== null;
   promptBox.visible = open;
@@ -53,7 +53,7 @@ export function refreshPrompt(ctx: TuiContext): void {
     new TextRenderable(renderer, {
       id: 'prompt-input-text',
       content: `▸ ${state.promptInput}▏`,
-      fg: COLORS.fg,
+      fg: theme.fg,
       height: 1,
       wrapMode: 'none'
     })
@@ -66,7 +66,7 @@ export function refreshPrompt(ctx: TuiContext): void {
       new TextRenderable(renderer, {
         id: 'prompt-error',
         content: `! ${state.message}`,
-        fg: COLORS.missing,
+        fg: theme.missing,
         height: 1,
         marginTop: 1,
         wrapMode: 'none'
@@ -75,7 +75,7 @@ export function refreshPrompt(ctx: TuiContext): void {
   }
 
   if (p.kind === 'edit' || p.kind === 'add-value') {
-    const secret = isSecretKey(p.key) && !state.showSecrets;
+    const secret = heuristics.isSecretKey(p.key) && !state.showSecrets;
     const nameWidth = Math.min(
       26,
       Math.max(...matrix.files.map((f) => basename(f.path).length + 2))
@@ -85,7 +85,7 @@ export function refreshPrompt(ctx: TuiContext): void {
       new TextRenderable(renderer, {
         id: 'prompt-table-header',
         content: 'Current values',
-        fg: COLORS.fgSection,
+        fg: theme.fgSection,
         wrapMode: 'none',
         height: 1,
         marginTop: 1
@@ -106,7 +106,7 @@ export function refreshPrompt(ctx: TuiContext): void {
           content: `${isTarget ? '▸' : ' '} ${basename(file.path)}`.padEnd(
             nameWidth
           ),
-          fg: isTarget ? COLORS.fgBase : COLORS.fgDim,
+          fg: isTarget ? theme.fgBase : theme.fgDim,
           height: 1,
           wrapMode: 'none'
         })
@@ -117,7 +117,7 @@ export function refreshPrompt(ctx: TuiContext): void {
         new TextRenderable(renderer, {
           id: `prompt-row-${file.path}-value`,
           content: current,
-          fg: !entry ? COLORS.missing : isTarget ? COLORS.fg : COLORS.fgDim,
+          fg: !entry ? theme.missing : isTarget ? theme.fg : theme.fgDim,
           height: 1,
           wrapMode: 'none'
         })

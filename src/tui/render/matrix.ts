@@ -1,4 +1,3 @@
-import { isSecretKey } from '@/core/mask.ts';
 import type { Matrix } from '@/core/matrix.ts';
 import { basename } from 'pathe';
 import type { TuiContext } from '@tui/context.ts';
@@ -10,12 +9,6 @@ import {
   type CellSpec
 } from '@tui/render/builders.ts';
 import { removeAllChildren } from '@tui/render/dom.ts';
-import {
-  COLORS,
-  KEY_COL_WIDTH,
-  SIDEBAR_WIDTH,
-  VALUE_COL_MIN
-} from '@tui/theme.ts';
 import type { State } from '@tui/types.ts';
 
 export function matrixTitle(matrix: Matrix, state: State): string {
@@ -35,15 +28,15 @@ export function matrixTitle(matrix: Matrix, state: State): string {
  * fit, keep them at the minimum and let the ScrollBox handle the overflow.
  */
 export function computeValueColWidth(ctx: TuiContext): number {
-  const { renderer, matrix } = ctx;
+  const { renderer, matrix, layout } = ctx;
   const available = Math.max(
     0,
-    renderer.terminalWidth - SIDEBAR_WIDTH - 6 - KEY_COL_WIDTH
+    renderer.terminalWidth - layout.SIDEBAR_WIDTH - 6 - layout.KEY_COL_WIDTH
   );
   const fair = matrix.files.length
     ? Math.floor(available / matrix.files.length)
-    : VALUE_COL_MIN;
-  return Math.max(VALUE_COL_MIN, fair);
+    : layout.VALUE_COL_MIN;
+  return Math.max(layout.VALUE_COL_MIN, fair);
 }
 
 export function refreshMatrix(ctx: TuiContext): void {
@@ -51,7 +44,10 @@ export function refreshMatrix(ctx: TuiContext): void {
     el: { matrixBox, headerHost, scrollBox },
     renderer,
     matrix,
-    state
+    state,
+    theme,
+    layout,
+    heuristics
   } = ctx;
   const sectionOf = ctx.sectionOf;
   const valueColWidth = computeValueColWidth(ctx);
@@ -60,21 +56,26 @@ export function refreshMatrix(ctx: TuiContext): void {
   removeAllChildren(scrollBox.content);
 
   headerHost.add(
-    buildRow(renderer, 'header', [
-      { text: 'KEY', fg: COLORS.fgHeader, width: KEY_COL_WIDTH },
-      ...matrix.files.map((f) => ({
-        text: basename(f.path),
-        fg: COLORS.fgHeader,
-        width: valueColWidth
-      }))
-    ])
+    buildRow(
+      renderer,
+      'header',
+      [
+        { text: 'KEY', fg: theme.fgHeader, width: layout.KEY_COL_WIDTH },
+        ...matrix.files.map((f) => ({
+          text: basename(f.path),
+          fg: theme.fgHeader,
+          width: valueColWidth
+        }))
+      ],
+      layout.CELL_PAD_X
+    )
   );
 
   // Walk every key (including those hidden by a collapsed section) so we can
   // render section dividers for collapsed groups too. Within an expanded
   // group we render the cell rows; within a collapsed one we render nothing
   // beyond the header.
-  const totalWidth = KEY_COL_WIDTH + valueColWidth * matrix.files.length;
+  const totalWidth = layout.KEY_COL_WIDTH + valueColWidth * matrix.files.length;
   const sectionStats = sectionMetadata(matrix, sectionOf, state);
 
   for (let r = 0; r < state.visibleItems.length; r++) {
@@ -89,18 +90,25 @@ export function refreshMatrix(ctx: TuiContext): void {
       };
       const focused = state.mode === 'browse' && r === state.rowIdx;
       scrollBox.content.add(
-        buildSectionDivider(renderer, `row-${r}`, sectionName, totalWidth, {
-          ...meta,
-          collapsed: state.collapsed.has(sectionKey),
-          focused
-        })
+        buildSectionDivider(
+          renderer,
+          `row-${r}`,
+          sectionName,
+          totalWidth,
+          {
+            ...meta,
+            collapsed: state.collapsed.has(sectionKey),
+            focused
+          },
+          theme
+        )
       );
       continue;
     }
     const key = item.ref;
-    const secret = isSecretKey(key) && !state.showSecrets;
+    const secret = heuristics.isSecretKey(key) && !state.showSecrets;
     const cells: CellSpec[] = [
-      { text: key, fg: COLORS.fg, width: KEY_COL_WIDTH }
+      { text: key, fg: theme.fg, width: layout.KEY_COL_WIDTH }
     ];
     for (let c = 0; c < matrix.files.length; c++) {
       const file = matrix.files[c]!;
@@ -109,10 +117,20 @@ export function refreshMatrix(ctx: TuiContext): void {
         state.mode === 'browse' && r === state.rowIdx && c === state.colIdx;
       const isModified = state.modified.has(`${key}|${file.path}`);
       cells.push(
-        buildValueCell(cell, secret, valueColWidth, focused, isModified)
+        buildValueCell(
+          cell,
+          secret,
+          valueColWidth,
+          focused,
+          isModified,
+          theme,
+          heuristics.isPlaceholderValue
+        )
       );
     }
-    scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
+    scrollBox.content.add(
+      buildRow(renderer, `row-${r}`, cells, layout.CELL_PAD_X)
+    );
   }
 
   // Keep the focused row in view. Single deferred call so layout has been

@@ -8,7 +8,8 @@ export function refreshHelp(ctx: TuiContext): void {
   const {
     el: { helpBox },
     renderer,
-    state
+    state,
+    theme
   } = ctx;
   helpBox.visible = state.helpOpen;
   if (!state.helpOpen) return;
@@ -29,7 +30,7 @@ export function refreshHelp(ctx: TuiContext): void {
     });
     helpBox.add(scroll);
     lines.forEach((line, i) => {
-      scroll.content.add(buildHelpRow(renderer, `help-${i}`, line));
+      scroll.content.add(buildHelpRow(renderer, `help-${i}`, line, theme));
     });
     return;
   }
@@ -63,12 +64,12 @@ export function refreshHelp(ctx: TuiContext): void {
   lines
     .slice(0, splitIdx)
     .forEach((line, i) =>
-      left.add(buildHelpRow(renderer, `help-l-${i}`, line))
+      left.add(buildHelpRow(renderer, `help-l-${i}`, line, theme))
     );
   lines
     .slice(splitIdx)
     .forEach((line, i) =>
-      right.add(buildHelpRow(renderer, `help-r-${i}`, line))
+      right.add(buildHelpRow(renderer, `help-r-${i}`, line, theme))
     );
   grid.add(left);
   grid.add(right);

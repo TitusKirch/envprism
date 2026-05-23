@@ -6,14 +6,18 @@ import {
   TextRenderable
 } from '@opentui/core';
 import type { TuiElements } from '@tui/context.ts';
-import { COLORS, ROW_GAP, SIDEBAR_WIDTH } from '@tui/theme.ts';
+import type { ResolvedLayout, ResolvedTheme } from '@tui/theme.ts';
 
 /**
  * Build the static element tree once and return stable handles. Content is
  * (re)populated later by the refreshers; this only establishes the layout
  * skeleton and parent/child wiring.
  */
-export function buildLayout(renderer: CliRenderer): TuiElements {
+export function buildLayout(
+  renderer: CliRenderer,
+  theme: ResolvedTheme,
+  layout: ResolvedLayout
+): TuiElements {
   const root = new BoxRenderable(renderer, {
     id: 'root',
     flexDirection: 'column',
@@ -35,7 +39,7 @@ export function buildLayout(renderer: CliRenderer): TuiElements {
     borderStyle: 'rounded',
     title: '',
     flexDirection: 'column',
-    width: SIDEBAR_WIDTH,
+    width: layout.SIDEBAR_WIDTH,
     flexShrink: 0,
     paddingX: 1
   });
@@ -74,7 +78,7 @@ export function buildLayout(renderer: CliRenderer): TuiElements {
     // Reserve a column on the right so the vertical scrollbar doesn't sit on
     // top of cell content, and a row at the bottom for the horizontal one.
     viewportOptions: { paddingRight: 1, paddingBottom: 1 },
-    contentOptions: { flexDirection: 'column', rowGap: ROW_GAP }
+    contentOptions: { flexDirection: 'column', rowGap: layout.ROW_GAP }
   });
   matrixBox.add(scrollBox);
 
@@ -105,7 +109,7 @@ export function buildLayout(renderer: CliRenderer): TuiElements {
   const status = new TextRenderable(renderer, {
     id: 'status',
     content: '',
-    fg: COLORS.fgDim,
+    fg: theme.fgDim,
     wrapMode: 'none',
     height: 1
   });
@@ -134,14 +138,14 @@ export function buildLayout(renderer: CliRenderer): TuiElements {
   const filterField = new TextRenderable(renderer, {
     id: 'filter-field',
     content: '',
-    fg: COLORS.fg,
+    fg: theme.fg,
     height: 1,
     wrapMode: 'none'
   });
   const filterStatus = new TextRenderable(renderer, {
     id: 'filter-status',
     content: '',
-    fg: COLORS.fgDim,
+    fg: theme.fgDim,
     height: 1,
     marginTop: 1,
     wrapMode: 'none'
@@ -149,7 +153,7 @@ export function buildLayout(renderer: CliRenderer): TuiElements {
   const filterHint = new TextRenderable(renderer, {
     id: 'filter-hint',
     content: 'Enter · keep filter    Esc · clear & close',
-    fg: COLORS.fg,
+    fg: theme.fg,
     height: 1,
     marginTop: 1,
     wrapMode: 'none'
@@ -187,7 +191,7 @@ export function buildLayout(renderer: CliRenderer): TuiElements {
   const promptHint = new TextRenderable(renderer, {
     id: 'prompt-hint',
     content: '',
-    fg: COLORS.fg,
+    fg: theme.fg,
     height: 1,
     marginTop: 2,
     wrapMode: 'none'

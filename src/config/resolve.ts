@@ -1,12 +1,56 @@
+import consola from 'consola';
 import { defu } from 'defu';
 import { isSecretKey } from '@/core/mask.ts';
 import {
   DEFAULT_CONFIG,
   type EnvprismConfig,
   type EnvprismUserConfig,
-  type GroupingMode
+  type GroupingMode,
+  type ThemeConfig,
+  type ThemeKey
 } from '@/config/schema.ts';
 import { isPlaceholderValue } from '@tui/format.ts';
+
+/** Hex source of truth for the TUI palette (resolved to RGBA in theme.ts). */
+export const DEFAULT_THEME_HEX: Record<ThemeKey, string> = {
+  fg: '#cccccc',
+  fgDim: '#666666',
+  fgHeader: '#ffffff',
+  fgBase: '#82aaff',
+  fgSection: '#82aaff',
+  differs: '#ffd866',
+  extra: '#ffd866',
+  placeholder: '#ffd866',
+  modified: '#7fce6a',
+  fgDirty: '#7fce6a',
+  missing: '#ff6b6b',
+  focusBg: '#3a3f4b'
+};
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Merge user hex overrides onto {@link DEFAULT_THEME_HEX}. Invalid hex values
+ * warn (light runtime guard) and fall back to the default. RGBA-free so it is
+ * unit-testable under Node without loading the TUI runtime; theme.ts wraps the
+ * result with RGBA.fromHex.
+ */
+export function resolveThemeHex(
+  theme: ThemeConfig = {},
+  warn: (msg: string) => void = consola.warn
+): Record<ThemeKey, string> {
+  const out = { ...DEFAULT_THEME_HEX };
+  for (const key of Object.keys(DEFAULT_THEME_HEX) as ThemeKey[]) {
+    const override = theme[key];
+    if (override === undefined) continue;
+    if (HEX_RE.test(override)) {
+      out[key] = override;
+    } else {
+      warn(`envprism: ignoring invalid hex for theme.${key}: "${override}"`);
+    }
+  }
+  return out;
+}
 
 /**
  * Resolve a replace-or-extend list field. An explicit `replace` list wins over

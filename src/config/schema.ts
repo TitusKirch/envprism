@@ -58,6 +58,8 @@ export interface ThemeConfig {
   focusBg?: string;
 }
 
+export type ThemeKey = keyof ThemeConfig;
+
 export interface LayoutConfig {
   keyColWidth: number;
   valueColMin: number;

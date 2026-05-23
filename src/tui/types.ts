@@ -22,8 +22,6 @@ export type UndoEntry =
   | { kind: 'add-kv'; file: EnvFile; entry: KvEntry }
   | { kind: 'delete-kv'; file: EnvFile; entry: KvEntry; idx: number };
 
-export const UNDO_LIMIT = 50;
-
 export type Pane = 'matrix' | 'sidebar';
 
 export type ItemKind = 'key' | 'divider';

@@ -6,6 +6,9 @@ import type {
 } from '@opentui/core';
 import type { Matrix } from '@/core/matrix.ts';
 import type { EnvFile } from '@/core/types.ts';
+import type { EnvprismConfig } from '@/config/schema.ts';
+import type { ResolvedHeuristics } from '@/config/resolve.ts';
+import type { ResolvedLayout, ResolvedTheme } from '@tui/theme.ts';
 import type { State } from '@tui/types.ts';
 
 /** Stable handles to every opentui element built once during layout. */
@@ -44,6 +47,10 @@ export interface TuiContext {
   readonly state: State;
   readonly allFiles: EnvFile[]; // mutated in place (push), stable reference
   readonly el: TuiElements;
+  readonly config: EnvprismConfig;
+  readonly theme: ResolvedTheme;
+  readonly layout: ResolvedLayout;
+  readonly heuristics: ResolvedHeuristics;
 
   // Reassigned by rebuildMatrix / setBase — must stay mutable fields.
   matrix: Matrix;

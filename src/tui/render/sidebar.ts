@@ -2,7 +2,6 @@ import { BoxRenderable, type RGBA, TextRenderable } from '@opentui/core';
 import { basename } from 'pathe';
 import type { TuiContext } from '@tui/context.ts';
 import { removeAllChildren } from '@tui/render/dom.ts';
-import { COLORS } from '@tui/theme.ts';
 
 export function refreshSidebar(ctx: TuiContext): void {
   const {
@@ -10,7 +9,8 @@ export function refreshSidebar(ctx: TuiContext): void {
     renderer,
     matrix,
     allFiles,
-    state
+    state,
+    theme
   } = ctx;
   const total = allFiles.length;
   const enabled = state.enabled.size;
@@ -27,18 +27,14 @@ export function refreshSidebar(ctx: TuiContext): void {
     const matrixIdx = matrix.files.indexOf(file);
     const isFocusCol = isEnabled && matrixIdx === state.colIdx;
     const isPaneFocus = state.pane === 'sidebar' && i === state.sidebarIdx;
-    const nameFg = !isEnabled
-      ? COLORS.fgDim
-      : isBase
-        ? COLORS.fgBase
-        : COLORS.fg;
+    const nameFg = !isEnabled ? theme.fgDim : isBase ? theme.fgBase : theme.fg;
 
     const row = new BoxRenderable(renderer, {
       id: `file-${file.path}`,
       flexDirection: 'row',
       height: 1,
       flexShrink: 0,
-      ...(isPaneFocus ? { backgroundColor: COLORS.focusBg } : {})
+      ...(isPaneFocus ? { backgroundColor: theme.focusBg } : {})
     });
     const span = (id: string, text: string, fg: RGBA) =>
       new TextRenderable(renderer, {
@@ -48,23 +44,23 @@ export function refreshSidebar(ctx: TuiContext): void {
         height: 1,
         wrapMode: 'none'
       });
-    row.add(span('focus', `${isPaneFocus ? '▶' : ' '} `, COLORS.fg));
+    row.add(span('focus', `${isPaneFocus ? '▶' : ' '} `, theme.fg));
     row.add(
       span(
         'dirty',
         `${isDirty ? '●' : ' '} `,
-        isDirty ? COLORS.fgDirty : COLORS.fgDim
+        isDirty ? theme.fgDirty : theme.fgDim
       )
     );
     row.add(
       span(
         'base',
         `${isBase ? '★' : ' '} `,
-        isBase ? COLORS.fgBase : COLORS.fgDim
+        isBase ? theme.fgBase : theme.fgDim
       )
     );
-    row.add(span('col', `${isFocusCol ? '▸' : ' '} `, COLORS.fgDim));
-    row.add(span('enabled', `${isEnabled ? '✓' : '☐'} `, COLORS.fgDim));
+    row.add(span('col', `${isFocusCol ? '▸' : ' '} `, theme.fgDim));
+    row.add(span('enabled', `${isEnabled ? '✓' : '☐'} `, theme.fgDim));
     row.add(span('name', basename(file.path), nameFg));
     sidebar.add(row);
   }

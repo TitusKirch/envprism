@@ -1,24 +1,41 @@
 import { createCliRenderer } from '@opentui/core';
 import type { Matrix } from '@/core/matrix.ts';
+import { DEFAULT_CONFIG, type EnvprismConfig } from '@/config/schema.ts';
+import { resolveHeuristics } from '@/config/resolve.ts';
 import type { State } from '@tui/types.ts';
 import { prefixSection } from '@tui/grouping.ts';
 import type { TuiContext } from '@tui/context.ts';
 import { createOnKey } from '@tui/keys/onKey.ts';
 import { buildLayout } from '@tui/render/layout.ts';
 import { refreshAll } from '@tui/render/index.ts';
+import { resolveLayout, resolveTheme } from '@tui/theme.ts';
 import { recomputeVisibleKeys } from '@tui/state/visible.ts';
 
-export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
+export async function runMatrixTui(
+  initialMatrix: Matrix,
+  config: EnvprismConfig = DEFAULT_CONFIG
+): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
+  const theme = resolveTheme(config.tui.theme);
+  const layout = resolveLayout(config.tui.layout);
+  const heuristics = resolveHeuristics(config);
   // The full discovered file list never changes; the matrix is rebuilt from
   // the currently *enabled* subset whenever the user toggles a file.
   const allFiles = initialMatrix.files.slice();
 
-  // Prefer banner grouping when the base file actually has section banners;
-  // otherwise prefix grouping is more useful out of the box.
+  // 'auto' prefers banner grouping when the base file has section banners;
+  // otherwise prefix grouping is more useful out of the box. An explicit
+  // config grouping overrides the heuristic.
   const hasBanners = initialMatrix.keys.some(
     (k) => initialMatrix.sectionOf(k) !== undefined
   );
+  const grouping =
+    heuristics.grouping === 'auto'
+      ? hasBanners
+        ? 'banner'
+        : 'prefix'
+      : heuristics.grouping;
+
   const state: State = {
     mode: 'browse',
     filter: '',
@@ -31,19 +48,19 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     message: null,
     driftOnly: false,
     confirmQuit: false,
-    grouping: hasBanners ? 'banner' : 'prefix',
+    grouping,
     helpOpen: false,
     undo: [],
     pane: 'matrix',
     sidebarIdx: 0,
     enabled: new Set(allFiles),
-    showSecrets: false,
+    showSecrets: !config.tui.maskSecrets,
     collapsed: new Set(),
     modified: new Set(),
     promptInput: ''
   };
 
-  const el = buildLayout(renderer);
+  const el = buildLayout(renderer, theme, layout);
 
   // Coalesce burst-y refreshes (held arrow keys, fast filter typing) into one
   // render per microtask flush. refreshAll rebuilds every matrix row, which is
@@ -55,6 +72,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     state,
     allFiles,
     el,
+    config,
+    theme,
+    layout,
+    heuristics,
     matrix: initialMatrix,
     currentBase: initialMatrix.base,
     refresh: () => {

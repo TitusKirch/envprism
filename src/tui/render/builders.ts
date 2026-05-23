@@ -5,9 +5,9 @@ import {
   TextRenderable
 } from '@opentui/core';
 import type { CellState } from '@/core/matrix.ts';
-import { formatValue, isPlaceholderValue, truncate } from '@tui/format.ts';
+import { formatValue, truncate } from '@tui/format.ts';
 import type { SectionStats } from '@tui/grouping.ts';
-import { CELL_PAD_X, COLORS } from '@tui/theme.ts';
+import type { ResolvedTheme } from '@tui/theme.ts';
 import type { HelpLine } from '@tui/types.ts';
 
 export interface CellSpec {
@@ -28,41 +28,43 @@ export function buildValueCell(
   secret: boolean,
   width: number,
   focused: boolean,
-  modified: boolean
+  modified: boolean,
+  theme: ResolvedTheme,
+  isPlaceholder: (value: string) => boolean
 ): CellSpec {
-  const bg = focused ? COLORS.focusBg : undefined;
-  const trailing = modified ? { char: '●', fg: COLORS.modified } : undefined;
+  const bg = focused ? theme.focusBg : undefined;
+  const trailing = modified ? { char: '●', fg: theme.modified } : undefined;
   if (cell.state === 'missing') {
     return {
       text: 'missing',
-      fg: COLORS.fgDim,
+      fg: theme.fgDim,
       width,
       bg,
-      icon: { char: '✗', fg: COLORS.missing },
+      icon: { char: '✗', fg: theme.missing },
       trailing
     };
   }
   const value = cell.value ?? '';
-  if (value !== '' && isPlaceholderValue(value)) {
+  if (value !== '' && isPlaceholder(value)) {
     return {
       text: value,
-      fg: COLORS.fg,
+      fg: theme.fg,
       width,
       bg,
-      icon: { char: '⚠', fg: COLORS.placeholder },
+      icon: { char: '⚠', fg: theme.placeholder },
       trailing
     };
   }
   const isEmpty = value === '' && !secret;
   const displayText = isEmpty ? '(empty)' : formatValue(value, secret);
-  const displayFg = isEmpty ? COLORS.fgDim : COLORS.fg;
+  const displayFg = isEmpty ? theme.fgDim : theme.fg;
   if (cell.state === 'differs') {
     return {
       text: displayText,
       fg: displayFg,
       width,
       bg,
-      icon: { char: '≠', fg: COLORS.differs },
+      icon: { char: '≠', fg: theme.differs },
       trailing
     };
   }
@@ -72,7 +74,7 @@ export function buildValueCell(
       fg: displayFg,
       width,
       bg,
-      icon: { char: '★', fg: COLORS.extra },
+      icon: { char: '★', fg: theme.extra },
       trailing
     };
   }
@@ -82,7 +84,8 @@ export function buildValueCell(
 export function buildHelpRow(
   renderer: CliRenderer,
   id: string,
-  line: HelpLine
+  line: HelpLine,
+  theme: ResolvedTheme
 ): BoxRenderable {
   const row = new BoxRenderable(renderer, {
     id,
@@ -95,7 +98,7 @@ export function buildHelpRow(
       new TextRenderable(renderer, {
         id: `${id}-t`,
         content: line.text,
-        fg: COLORS.fgSection,
+        fg: theme.fgSection,
         wrapMode: 'none',
         height: 1
       })
@@ -105,7 +108,7 @@ export function buildHelpRow(
       new TextRenderable(renderer, {
         id: `${id}-t`,
         content: line.text,
-        fg: COLORS.fg,
+        fg: theme.fg,
         wrapMode: 'none',
         height: 1
       })
@@ -124,7 +127,7 @@ export function buildHelpRow(
       new TextRenderable(renderer, {
         id: `${id}-desc`,
         content: line.description,
-        fg: COLORS.fgDim,
+        fg: theme.fgDim,
         wrapMode: 'none',
         height: 1
       })
@@ -138,7 +141,8 @@ export function buildSectionDivider(
   id: string,
   name: string | undefined,
   width: number,
-  meta: SectionStats & { collapsed: boolean; focused?: boolean }
+  meta: SectionStats & { collapsed: boolean; focused?: boolean },
+  theme: ResolvedTheme
 ): BoxRenderable {
   // Multi-segment divider so colours can encode meaning:
   //   gray ───   blue ▾ Name   dim · stats   gray ───
@@ -152,27 +156,27 @@ export function buildSectionDivider(
   // trailing whitespace stay dim.
   type Seg = { text: string; fg: RGBA };
   const segs: Seg[] = [
-    { text: ` ${indicator} `, fg: COLORS.fgDim },
-    { text: baseName, fg: COLORS.fg },
-    { text: '  ', fg: COLORS.fgDim }
+    { text: ` ${indicator} `, fg: theme.fgDim },
+    { text: baseName, fg: theme.fg },
+    { text: '  ', fg: theme.fgDim }
   ];
   if (meta.missing > 0) {
-    segs.push({ text: '✗ ', fg: COLORS.missing });
-    segs.push({ text: `${meta.missing}`, fg: COLORS.missing });
-    segs.push({ text: ' missing  ', fg: COLORS.fg });
+    segs.push({ text: '✗ ', fg: theme.missing });
+    segs.push({ text: `${meta.missing}`, fg: theme.missing });
+    segs.push({ text: ' missing  ', fg: theme.fg });
   }
   if (meta.drift > 0) {
-    segs.push({ text: '≠ ', fg: COLORS.differs });
-    segs.push({ text: `${meta.drift}`, fg: COLORS.differs });
-    segs.push({ text: '/', fg: COLORS.fgDim });
-    segs.push({ text: `${meta.total}`, fg: COLORS.differs });
-    segs.push({ text: ' drift  ', fg: COLORS.fg });
+    segs.push({ text: '≠ ', fg: theme.differs });
+    segs.push({ text: `${meta.drift}`, fg: theme.differs });
+    segs.push({ text: '/', fg: theme.fgDim });
+    segs.push({ text: `${meta.total}`, fg: theme.differs });
+    segs.push({ text: ' drift  ', fg: theme.fg });
   }
   if (meta.missing === 0 && meta.drift === 0) {
-    segs.push({ text: `${meta.total}`, fg: COLORS.fgDim });
-    segs.push({ text: ' keys  ', fg: COLORS.fg });
+    segs.push({ text: `${meta.total}`, fg: theme.fgDim });
+    segs.push({ text: ' keys  ', fg: theme.fg });
   }
-  segs.push({ text: ' ', fg: COLORS.fgDim });
+  segs.push({ text: ' ', fg: theme.fgDim });
 
   const labelLength = segs.reduce((sum, s) => sum + s.text.length, 0);
   const rule = '─';
@@ -186,13 +190,13 @@ export function buildSectionDivider(
     flexShrink: 0,
     height: 1,
     paddingX: 1,
-    ...(meta.focused ? { backgroundColor: COLORS.focusBg } : {})
+    ...(meta.focused ? { backgroundColor: theme.focusBg } : {})
   });
   box.add(
     new TextRenderable(renderer, {
       id: `${id}-lead`,
       content: rule.repeat(beforeLen),
-      fg: COLORS.fgDim,
+      fg: theme.fgDim,
       height: 1,
       wrapMode: 'none'
     })
@@ -212,7 +216,7 @@ export function buildSectionDivider(
     new TextRenderable(renderer, {
       id: `${id}-trail`,
       content: rule.repeat(afterLen),
-      fg: COLORS.fgDim,
+      fg: theme.fgDim,
       height: 1,
       wrapMode: 'none'
     })
@@ -223,7 +227,8 @@ export function buildSectionDivider(
 export function buildRow(
   renderer: CliRenderer,
   idPrefix: string,
-  cells: CellSpec[]
+  cells: CellSpec[],
+  padX: number
 ): BoxRenderable {
   const row = new BoxRenderable(renderer, {
     id: idPrefix,
@@ -238,11 +243,11 @@ export function buildRow(
       height: 1,
       flexDirection: 'row',
       flexShrink: 0,
-      paddingX: CELL_PAD_X
+      paddingX: padX
     };
     if (cell.bg) cellOpts.backgroundColor = cell.bg;
     const cellBox = new BoxRenderable(renderer, cellOpts);
-    const innerWidth = Math.max(0, cell.width - CELL_PAD_X * 2);
+    const innerWidth = Math.max(0, cell.width - padX * 2);
     const iconLen = cell.icon ? cell.icon.char.length + 1 : 0;
     const trailingLen = cell.trailing ? cell.trailing.char.length + 1 : 0;
     const textWidth = Math.max(0, innerWidth - iconLen - trailingLen);
