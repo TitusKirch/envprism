@@ -62,6 +62,29 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts']
+    include: ['tests/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      // Excluded: type-only modules (no runtime), the entry shim, and the
+      // opentui-bound rendering layer — the latter loads bun:ffi and can only
+      // be exercised under Bun / a real TTY (covered by manual TUI smokes),
+      // not by Node vitest. This keeps coverage focused on testable logic.
+      exclude: [
+        'src/bin/**',
+        'src/cli.ts',
+        'src/index.ts',
+        'src/**/types.ts',
+        'src/tui/keys/event.ts',
+        'src/tui/context.ts',
+        'src/tui/app.ts',
+        'src/tui/theme.ts',
+        'src/tui/help.ts',
+        'src/tui/render/**',
+        'src/commands/tui.ts',
+        'src/commands/config/edit.ts',
+        'src/commands/config/index.ts'
+      ]
+    }
   }
 });
