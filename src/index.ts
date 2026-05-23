@@ -16,3 +16,18 @@ export type {
   KvEntry,
   Quoting
 } from '@/core/types.ts';
+export { defineEnvprismConfig } from '@/config/define.ts';
+export { loadEnvprismConfig } from '@/config/load.ts';
+export type { LoadedConfig, LoadOptions } from '@/config/load.ts';
+export type {
+  BaseConfig,
+  DiffConfig,
+  DiscoveryConfig,
+  EnvprismConfig,
+  EnvprismUserConfig,
+  GroupingMode,
+  HeuristicsConfig,
+  LayoutConfig,
+  ThemeConfig,
+  TuiConfig
+} from '@/config/schema.ts';
