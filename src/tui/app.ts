@@ -8,30 +8,11 @@ import {
 import type { Matrix } from '@/core/matrix.ts';
 import { COLORS, ROW_GAP, SIDEBAR_WIDTH } from '@tui/theme.ts';
 import type { State } from '@tui/types.ts';
-import { prefixSection, stepRow } from '@tui/grouping.ts';
+import { prefixSection } from '@tui/grouping.ts';
 import type { TuiContext, TuiElements } from '@tui/context.ts';
+import { createOnKey } from '@tui/keys/onKey.ts';
 import { refreshAll } from '@tui/render/index.ts';
-import {
-  rebuildMatrix as rebuildMatrixImpl,
-  recomputeVisibleKeys as recomputeVisibleKeysImpl
-} from '@tui/state/visible.ts';
-import {
-  cancelPrompt as cancelPromptImpl,
-  closePrompt as closePromptImpl,
-  commitPrompt as commitPromptImpl,
-  startAdd as startAddImpl,
-  startDelete as startDeleteImpl,
-  startEdit as startEditImpl,
-  startNewFile as startNewFileImpl
-} from '@tui/actions/prompt.ts';
-import {
-  applyToAllFiles as applyToAllFilesImpl,
-  setBase as setBaseImpl,
-  syncToAll as syncToAllImpl,
-  toggleEnabled as toggleEnabledImpl,
-  undo as undoImpl
-} from '@tui/actions/batch.ts';
-import { saveDirty as saveDirtyImpl } from '@tui/actions/io.ts';
+import { recomputeVisibleKeys } from '@tui/state/visible.ts';
 
 export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   const renderer = await createCliRenderer({ useMouse: true });
@@ -341,14 +322,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
         ? ctx.matrix.sectionOf(key)
         : prefixSection(key)
   };
-  const refresh = ctx.refresh;
-  const sectionOf = ctx.sectionOf;
 
-  // --- State helpers (thin ctx-bound wrappers over state/visible.ts) ---
-  const recomputeVisibleKeys = () => recomputeVisibleKeysImpl(ctx);
-  const rebuildMatrix = () => rebuildMatrixImpl(ctx);
-
-  recomputeVisibleKeys();
+  recomputeVisibleKeys(ctx);
   ctx.refreshNow();
 
   // --- Interaction ---
@@ -359,292 +334,13 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       resolve();
     };
 
-    // Thin ctx-bound wrappers so the key handler below reads unchanged.
-    const closePrompt = (msg: string | null = null) =>
-      closePromptImpl(ctx, msg);
-    const cancelPrompt = () => cancelPromptImpl(ctx);
-    const commitPrompt = () => commitPromptImpl(ctx);
-    const startEdit = () => startEditImpl(ctx);
-    const startAdd = () => startAddImpl(ctx);
-    const startNewFile = () => startNewFileImpl(ctx);
-    const startDelete = () => startDeleteImpl(ctx);
-    const applyToAllFiles = (key: string, value: string) =>
-      applyToAllFilesImpl(ctx, key, value);
-    const syncToAll = () => syncToAllImpl(ctx);
-    const undo = () => undoImpl(ctx);
-    const toggleEnabled = () => toggleEnabledImpl(ctx);
-    const setBase = () => setBaseImpl(ctx);
-    const saveDirty = () => saveDirtyImpl(ctx);
-
-    const onKey = (key: {
-      name: string;
-      ctrl?: boolean;
-      shift?: boolean;
-      sequence?: string;
-      preventDefault?: () => void;
-    }) => {
-      if (state.helpOpen) {
-        if (
-          key.name === 'escape' ||
-          key.sequence === '?' ||
-          key.sequence === 'ß' ||
-          key.name === 'q'
-        ) {
-          state.helpOpen = false;
-          refresh();
-        }
-        return;
-      }
-
-      if (state.mode === 'prompt') {
-        if (key.name === 'escape') {
-          cancelPrompt();
-          return;
-        }
-        if (key.name === 'return') {
-          commitPrompt();
-          return;
-        }
-        if (key.name === 'backspace') {
-          if (state.promptInput.length > 0) {
-            state.promptInput = state.promptInput.slice(0, -1);
-            refresh();
-          }
-          return;
-        }
-        if (key.ctrl && key.name === 't') {
-          state.showSecrets = !state.showSecrets;
-          refresh();
-          return;
-        }
-        if (key.ctrl && key.name === 'a' && state.prompt) {
-          const p = state.prompt;
-          if (p.kind === 'edit' || p.kind === 'add-value') {
-            const touched = applyToAllFiles(p.key, state.promptInput);
-            rebuildMatrix();
-            closePrompt(
-              touched > 0
-                ? `Set ${p.key} in ${touched} file(s). Ctrl-S to save.`
-                : `${p.key} already had that value everywhere.`
-            );
-          }
-          return;
-        }
-        const seq = key.sequence ?? '';
-        if (!key.ctrl && seq.length === 1 && seq >= ' ' && seq !== '\x7f') {
-          state.promptInput += seq;
-          refresh();
-        }
-        return;
-      }
-
-      if (state.mode === 'filter') {
-        if (key.name === 'escape') {
-          state.filter = '';
-          state.mode = 'browse';
-          recomputeVisibleKeys();
-          refresh();
-          return;
-        }
-        if (key.name === 'return') {
-          state.mode = 'browse';
-          refresh();
-          return;
-        }
-        if (key.name === 'backspace') {
-          if (state.filter.length > 0) {
-            state.filter = state.filter.slice(0, -1);
-            recomputeVisibleKeys();
-            refresh();
-          }
-          return;
-        }
-        // Append any printable character. opentui's KeyEvent puts the actual
-        // char into `sequence` for normal keystrokes.
-        const seq = key.sequence ?? '';
-        if (seq.length === 1 && seq >= ' ' && seq !== '\x7f') {
-          state.filter += seq;
-          recomputeVisibleKeys();
-          refresh();
-        }
-        return;
-      }
-
-      // Browse mode.
-      if (key.ctrl && key.name === 'c') return cleanup();
-      if (key.ctrl && key.name === 's') {
-        state.confirmQuit = false;
-        return void saveDirty();
-      }
-      if (key.ctrl && key.name === 'z') {
-        state.confirmQuit = false;
-        return undo();
-      }
-      if (key.ctrl && key.name === 't') {
-        state.showSecrets = !state.showSecrets;
-        state.message = state.showSecrets
-          ? 'Showing secret values in plain text.'
-          : 'Masking secret values.';
-        return refresh();
-      }
-
-      const tryQuit = () => {
-        if (state.dirty.size > 0 && !state.confirmQuit) {
-          state.confirmQuit = true;
-          state.message = `${state.dirty.size} unsaved file(s). Press 'q' again to quit without saving, or Ctrl-S to save first.`;
-          refresh();
-          return;
-        }
-        cleanup();
-      };
-      // Any key other than q clears a pending quit confirmation.
-      if (state.confirmQuit && key.name !== 'q') {
-        state.confirmQuit = false;
-        state.message = null;
-      }
-
-      if (state.pane === 'sidebar') {
-        switch (key.name) {
-          case 'q':
-            return tryQuit();
-          case 'tab':
-            state.pane = 'matrix';
-            return refresh();
-          case 'right':
-            state.pane = 'matrix';
-            return refresh();
-          case 'up':
-            state.sidebarIdx = Math.max(0, state.sidebarIdx - 1);
-            return refresh();
-          case 'down':
-            state.sidebarIdx = Math.min(
-              allFiles.length - 1,
-              state.sidebarIdx + 1
-            );
-            return refresh();
-          case 'space':
-            return toggleEnabled();
-          case 'b':
-            return setBase();
-        }
-        if (key.sequence === ' ') return toggleEnabled();
-        if (key.sequence === '?' || key.sequence === 'ß') {
-          state.helpOpen = true;
-          return refresh();
-        }
-        return;
-      }
-
-      switch (key.name) {
-        case 'q':
-          return tryQuit();
-        case 'tab':
-          state.pane = 'sidebar';
-          return refresh();
-        case 'up':
-          state.rowIdx = stepRow(state, -1);
-          return refresh();
-        case 'down':
-          state.rowIdx = stepRow(state, 1);
-          return refresh();
-        case 'left':
-          if (state.colIdx === 0) {
-            // Already at the leftmost matrix column — hand focus to the sidebar.
-            state.pane = 'sidebar';
-            return refresh();
-          }
-          state.colIdx = Math.max(0, state.colIdx - 1);
-          return refresh();
-        case 'right':
-          state.colIdx = Math.min(
-            ctx.matrix.files.length - 1,
-            state.colIdx + 1
-          );
-          return refresh();
-        case 'e':
-        case 'return':
-          return startEdit();
-        case 'a':
-          return startAdd();
-        case 'd':
-          return startDelete();
-        case 'n':
-          return startNewFile();
-        case 'v':
-          state.driftOnly = !state.driftOnly;
-          state.message = state.driftOnly
-            ? 'Drift-only view (only keys with differences).'
-            : 'Full view.';
-          recomputeVisibleKeys();
-          return refresh();
-        case 'c': {
-          if (key.shift) {
-            // Capital C — expand every collapsed section. Use this when all
-            // keys you'd navigate to are hidden behind a fold.
-            if (state.collapsed.size === 0) {
-              state.message = 'Nothing collapsed.';
-              return refresh();
-            }
-            const count = state.collapsed.size;
-            state.collapsed.clear();
-            state.message = `Expanded ${count} section(s).`;
-            recomputeVisibleKeys();
-            return refresh();
-          }
-          // Collapse / expand the section of the focused item. Works on
-          // both key rows and section dividers; on a divider this is the
-          // only way back into a collapsed section.
-          const item = state.visibleItems[state.rowIdx];
-          if (!item) return;
-          const sectionKey =
-            item.kind === 'divider'
-              ? item.ref
-              : (sectionOf(item.ref) ?? '__other__');
-          if (state.collapsed.has(sectionKey)) {
-            state.collapsed.delete(sectionKey);
-            state.message = `Expanded "${sectionKey === '__other__' ? '(other)' : sectionKey}".`;
-          } else {
-            state.collapsed.add(sectionKey);
-            state.message = `Collapsed "${sectionKey === '__other__' ? '(other)' : sectionKey}". Press Shift-C to expand all.`;
-          }
-          recomputeVisibleKeys();
-          return refresh();
-        }
-        case 'g': {
-          // Preserve focus across the rebuild — focusedRef in
-          // recomputeVisibleKeys finds the same item by ref.
-          state.grouping = state.grouping === 'banner' ? 'prefix' : 'banner';
-          recomputeVisibleKeys();
-          state.message =
-            state.grouping === 'banner'
-              ? 'Group by comment banners.'
-              : 'Group by key prefix (first underscore segment).';
-          return refresh();
-        }
-      }
-
-      if (key.sequence === '/' || key.name === 'slash') {
-        state.mode = 'filter';
-        state.message = null;
-        refresh();
-        return;
-      }
-
-      // = sync-to-all. opentui's key.name for "=" is inconsistent across
-      // platforms so we check the sequence directly.
-      if (key.sequence === '=') return syncToAll();
-
-      if (key.sequence === '?' || key.sequence === 'ß') {
-        state.helpOpen = true;
-        refresh();
-      }
-    };
+    const onKey = createOnKey(ctx, cleanup);
 
     // Use the internal channel so our handler runs *before* the focused
     // renderable processes the event. That lets us intercept Esc / Enter
     // before opentui's InputRenderable swallows them (Esc would otherwise
     // just blur the input instead of closing the modal).
     renderer._internalKeyInput.onInternal('keypress', onKey);
-    renderer.on('resize', refresh);
+    renderer.on('resize', ctx.refresh);
   });
 }
