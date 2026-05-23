@@ -84,7 +84,9 @@ export default defineConfig({
         'src/commands/tui.ts',
         'src/commands/config/edit.ts',
         'src/commands/config/index.ts'
-      ]
+      ],
+      reporter: ['text', 'lcov', 'html'],
+      reportsDirectory: 'coverage'
     }
   }
 });
