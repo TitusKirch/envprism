@@ -12,95 +12,23 @@ import { isSecretKey, maskValue } from '@/core/mask.ts';
 import { buildMatrix, type CellState, type Matrix } from '@/core/matrix.ts';
 import { rebuildKvLine, serializeEnv } from '@/core/serialize.ts';
 import type { EnvFile, KvEntry } from '@/core/types.ts';
-
-type Mode = 'browse' | 'filter' | 'prompt';
-
-type Prompt =
-  | { kind: 'edit'; key: string; file: EnvFile }
-  | { kind: 'add-key'; file: EnvFile }
-  | { kind: 'add-value'; key: string; file: EnvFile }
-  | { kind: 'new-file' };
-
-type Grouping = 'banner' | 'prefix';
-
-type UndoEntry =
-  | {
-      kind: 'edit';
-      file: EnvFile;
-      entry: KvEntry;
-      prevValue: string;
-      prevRaw: string;
-    }
-  | { kind: 'add-kv'; file: EnvFile; entry: KvEntry }
-  | { kind: 'delete-kv'; file: EnvFile; entry: KvEntry; idx: number };
-
-const UNDO_LIMIT = 50;
-
-type Pane = 'matrix' | 'sidebar';
-
-type ItemKind = 'key' | 'divider';
-interface MatrixItem {
-  kind: ItemKind;
-  // For 'key': the variable name; for 'divider': the section's lookup name
-  // (or '__other__'). Holding the raw key/section here keeps focus stable
-  // across rebuilds.
-  ref: string;
-}
-
-interface State {
-  mode: Mode;
-  filter: string;
-  rowIdx: number;
-  colIdx: number;
-  prompt: Prompt | null;
-  dirty: Set<EnvFile>;
-  visibleKeys: string[]; // kept for callers that just want the keys
-  visibleItems: MatrixItem[];
-  message: string | null;
-  driftOnly: boolean;
-  confirmQuit: boolean;
-  grouping: Grouping;
-  helpOpen: boolean;
-  undo: UndoEntry[];
-  pane: Pane;
-  sidebarIdx: number;
-  enabled: Set<EnvFile>;
-  showSecrets: boolean;
-  collapsed: Set<string>;
-  // (key + "|" + file.path) of cells the user has touched in this session.
-  // Drives a green ● marker so unsaved local changes are visually distinct
-  // from "this file disagrees with base", which uses the diff icons.
-  modified: Set<string>;
-  // Current value of the prompt input. We accumulate characters ourselves
-  // in the global key handler instead of relying on opentui's InputRenderable,
-  // because the InputRenderable swallows Esc (it interprets it as "blur").
-  promptInput: string;
-}
-
-// Three semantic colours only. Everything else is grayscale so the eye
-// doesn't get pulled in five directions.
-const COLORS = {
-  fg: RGBA.fromHex('#cccccc'),
-  fgDim: RGBA.fromHex('#666666'),
-  fgHeader: RGBA.fromHex('#ffffff'),
-  // accent — base file + section names (blue/purple, single accent for
-  // navigational anchors).
-  fgBase: RGBA.fromHex('#82aaff'),
-  fgSection: RGBA.fromHex('#82aaff'),
-  // drift/extra/placeholder — same yellow. They describe disagreement with
-  // the base file, all one semantic.
-  differs: RGBA.fromHex('#ffd866'),
-  extra: RGBA.fromHex('#ffd866'),
-  placeholder: RGBA.fromHex('#ffd866'),
-  // user-made changes (modified cells, dirty files, unsaved counter) — green.
-  // Different colour from drift on purpose: "I just touched this" is a
-  // different signal from "this disagrees with the base".
-  modified: RGBA.fromHex('#7fce6a'),
-  fgDirty: RGBA.fromHex('#7fce6a'),
-  // problem — value-is-missing red. Reserved exclusively for missing.
-  missing: RGBA.fromHex('#ff6b6b'),
-  focusBg: RGBA.fromHex('#3a3f4b')
-};
+import {
+  CELL_PAD_X,
+  COLORS,
+  KEY_COL_WIDTH,
+  ROW_GAP,
+  SIDEBAR_WIDTH,
+  VALUE_COL_MIN
+} from '@tui/theme.ts';
+import {
+  type HelpLine,
+  KEY_RE,
+  type MatrixItem,
+  type Prompt,
+  type State,
+  UNDO_LIMIT,
+  type UndoEntry
+} from '@tui/types.ts';
 
 const PLACEHOLDER_RE =
   /^(todo|fixme|changeme|placeholder|tbd|x{3,}|your[_-]?(secret|key|token|password|api[_-]?key)(_here)?|replace[_-]?me)$/i;
@@ -110,19 +38,6 @@ function isPlaceholderValue(value: string): boolean {
   if (v.length === 0) return false;
   return PLACEHOLDER_RE.test(v);
 }
-
-const KEY_COL_WIDTH = 22;
-const VALUE_COL_MIN = 18;
-const SIDEBAR_WIDTH = 30;
-const ROW_GAP = 0;
-const CELL_PAD_X = 1;
-const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-type HelpLine =
-  | { kind: 'header'; text: string }
-  | { kind: 'entry'; text: string }
-  | { kind: 'legend'; symbol: string; color: RGBA; description: string }
-  | { kind: 'blank' };
 
 function buildHelpLines(): HelpLine[] {
   return [
