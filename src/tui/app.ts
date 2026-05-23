@@ -634,7 +634,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
   // --- Interaction ---
   return new Promise<void>((resolve) => {
     const cleanup = () => {
-      renderer.keyInput.off('keypress', onKey);
+      renderer._internalKeyInput.offInternal('keypress', onKey);
       renderer.destroy?.();
       resolve();
     };
@@ -972,6 +972,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       ctrl?: boolean;
       shift?: boolean;
       sequence?: string;
+      preventDefault?: () => void;
     }) => {
       if (state.helpOpen) {
         if (
@@ -987,9 +988,14 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       }
 
       if (state.mode === 'prompt') {
-        if (key.name === 'escape') cancelPrompt();
-        else if (key.name === 'return') commitPrompt();
-        else if (key.ctrl && key.name === 't') {
+        if (key.name === 'escape') {
+          key.preventDefault?.();
+          cancelPrompt();
+        } else if (key.name === 'return') {
+          key.preventDefault?.();
+          commitPrompt();
+        } else if (key.ctrl && key.name === 't') {
+          key.preventDefault?.();
           state.showSecrets = !state.showSecrets;
           refresh();
         } else if (key.ctrl && key.name === 'a' && state.prompt) {
@@ -1209,7 +1215,11 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       }
     };
 
-    renderer.keyInput.on('keypress', onKey);
+    // Use the internal channel so our handler runs *before* the focused
+    // renderable processes the event. That lets us intercept Esc / Enter
+    // before opentui's InputRenderable swallows them (Esc would otherwise
+    // just blur the input instead of closing the modal).
+    renderer._internalKeyInput.onInternal('keypress', onKey);
     renderer.on('resize', refresh);
   });
 }
@@ -1351,15 +1361,24 @@ function refreshMatrix(
     scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
   }
 
-  // Keep the focused row in view. Synchronous so the scroll lands at the
-  // same time as the row rebuild — deferring it raced with subsequent key
-  // presses and made the cursor "jump" around.
+  // Keep the focused row in view. Sync attempt first (in case layout was
+  // already up-to-date), plus a deferred retry once yoga has finished
+  // measuring the freshly-added rows. Both target the current rowIdx —
+  // throttled refresh means there's only one of these pending at a time.
   if (state.mode === 'browse' && state.visibleItems.length > 0) {
+    const target = `row-${state.rowIdx}`;
     try {
-      scrollBox.scrollChildIntoView(`row-${state.rowIdx}`);
+      scrollBox.scrollChildIntoView(target);
     } catch {
-      // child not in tree yet — the next refresh after layout will work.
+      /* not laid out yet */
     }
+    setImmediate(() => {
+      try {
+        scrollBox.scrollChildIntoView(target);
+      } catch {
+        /* row destroyed before scroll ran */
+      }
+    });
   }
 }
 
