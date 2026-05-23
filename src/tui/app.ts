@@ -347,6 +347,16 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     width: 40
   });
   footer.add(filterInput);
+  // Subscribe directly to the input's change event — relying on the global
+  // keypress handler to mirror the value via queueMicrotask was racy and
+  // sometimes never fired (opentui consumes the keystroke first).
+  filterInput.on('input', (value: string) => {
+    if (state.mode !== 'filter') return;
+    if (state.filter === value) return;
+    state.filter = value;
+    recomputeVisibleKeys();
+    refresh();
+  });
 
   // --- Prompt modal (used for edit / add / new-file) ---
   const promptBox = new BoxRenderable(renderer, {
@@ -948,13 +958,8 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           refresh();
           return;
         }
-        queueMicrotask(() => {
-          if (state.filter !== filterInput.value) {
-            state.filter = filterInput.value;
-            recomputeVisibleKeys();
-            refresh();
-          }
-        });
+        // All other keys are consumed by the focused InputRenderable; the
+        // 'input' subscription mirrors the value into state.filter.
         return;
       }
 
@@ -1726,9 +1731,9 @@ function buildSectionDivider(
   // when the section also has plain differs.
   const baseName = name ?? '(other)';
   const indicator = meta.collapsed ? '▸' : '▾';
-  // Names + descriptive words render in the normal foreground so the user
-  // reads the section name first. Icons / numbers / separators sit in dim
-  // grey as a quieter status hint.
+  // Icons + numbers carry colour (red for missing, yellow for drift). Name
+  // and descriptive words render in the normal foreground; the "/" and
+  // trailing whitespace stay dim.
   type Seg = { text: string; fg: RGBA };
   const segs: Seg[] = [
     { text: ` ${indicator} `, fg: COLORS.fgDim },
@@ -1736,15 +1741,15 @@ function buildSectionDivider(
     { text: '  ', fg: COLORS.fgDim }
   ];
   if (meta.missing > 0) {
-    segs.push({ text: '✗ ', fg: COLORS.fgDim });
-    segs.push({ text: `${meta.missing}`, fg: COLORS.fgDim });
+    segs.push({ text: '✗ ', fg: COLORS.missing });
+    segs.push({ text: `${meta.missing}`, fg: COLORS.missing });
     segs.push({ text: ' missing  ', fg: COLORS.fg });
   }
   if (meta.drift > 0) {
-    segs.push({ text: '≠ ', fg: COLORS.fgDim });
-    segs.push({ text: `${meta.drift}`, fg: COLORS.fgDim });
+    segs.push({ text: '≠ ', fg: COLORS.differs });
+    segs.push({ text: `${meta.drift}`, fg: COLORS.differs });
     segs.push({ text: '/', fg: COLORS.fgDim });
-    segs.push({ text: `${meta.total}`, fg: COLORS.fgDim });
+    segs.push({ text: `${meta.total}`, fg: COLORS.differs });
     segs.push({ text: ' drift  ', fg: COLORS.fg });
   }
   if (meta.missing === 0 && meta.drift === 0) {
