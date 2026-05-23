@@ -39,6 +39,15 @@ const UNDO_LIMIT = 50;
 
 type Pane = 'matrix' | 'sidebar';
 
+type ItemKind = 'key' | 'divider';
+interface MatrixItem {
+  kind: ItemKind;
+  // For 'key': the variable name; for 'divider': the section's lookup name
+  // (or '__other__'). Holding the raw key/section here keeps focus stable
+  // across rebuilds.
+  ref: string;
+}
+
 interface State {
   mode: Mode;
   filter: string;
@@ -46,7 +55,8 @@ interface State {
   colIdx: number;
   prompt: Prompt | null;
   dirty: Set<EnvFile>;
-  visibleKeys: string[];
+  visibleKeys: string[]; // kept for callers that just want the keys
+  visibleItems: MatrixItem[];
   message: string | null;
   driftOnly: boolean;
   confirmQuit: boolean;
@@ -145,36 +155,44 @@ function buildHelpLines(): HelpLine[] {
     { kind: 'entry', text: '  q                 Quit (twice if dirty)' },
     { kind: 'entry', text: '  Ctrl-C            Force quit' },
     { kind: 'blank' },
-    { kind: 'header', text: 'Cell symbols' },
+    { kind: 'header', text: 'Row icons (in the KEY column)' },
     {
       kind: 'legend',
-      symbol: '≠ value',
-      color: RGBA.fromHex('#ffd866'),
-      description: 'differs from base'
+      symbol: '✗ KEY',
+      color: RGBA.fromHex('#ff6b6b'),
+      description: 'at least one file is missing this key'
     },
+    {
+      kind: 'legend',
+      symbol: '≠ KEY',
+      color: RGBA.fromHex('#ffd866'),
+      description: 'value differs in at least one file'
+    },
+    {
+      kind: 'legend',
+      symbol: '★ KEY',
+      color: RGBA.fromHex('#c792ea'),
+      description: 'key is not in the base'
+    },
+    { kind: 'blank' },
+    { kind: 'header', text: 'Cell text' },
     {
       kind: 'legend',
       symbol: '✗ missing',
-      color: RGBA.fromHex('#ff6b6b'),
-      description: 'key in base but not here'
-    },
-    {
-      kind: 'legend',
-      symbol: '★ value',
-      color: RGBA.fromHex('#c792ea'),
-      description: 'key here but not in base'
+      color: RGBA.fromHex('#666666'),
+      description: 'this file has no value for the key'
     },
     {
       kind: 'legend',
       symbol: '•••• (N)',
       color: RGBA.fromHex('#cccccc'),
-      description: 'secret-suspect, masked by length'
+      description: 'secret-suspect value masked by length'
     },
     {
       kind: 'legend',
       symbol: '⚠ TODO',
       color: RGBA.fromHex('#ffa05c'),
-      description: 'placeholder value detected (TODO, CHANGEME, xxx, …)'
+      description: 'placeholder value (TODO, CHANGEME, xxx, …)'
     }
   ];
 }
@@ -200,6 +218,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     prompt: null,
     dirty: new Set(),
     visibleKeys: matrix.keys.slice(),
+    visibleItems: [],
     message: null,
     driftOnly: false,
     confirmQuit: false,
@@ -334,7 +353,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     top: '20%',
     left: '15%',
     right: '15%',
-    height: 8,
+    height: 'auto',
     zIndex: 50,
     border: true,
     borderStyle: 'rounded',
@@ -394,7 +413,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     top: 2,
     left: '8%',
     right: '8%',
-    height: 24,
+    height: 'auto',
     zIndex: 100,
     border: true,
     borderStyle: 'rounded',
@@ -444,16 +463,38 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     state.grouping === 'banner' ? matrix.sectionOf(key) : prefixSection(key);
 
   const recomputeVisibleKeys = () => {
-    const filtered = matrix.keys.filter((k) => {
-      if (!matchesFilter(k, state.filter)) return false;
-      if (state.driftOnly && !keyDrifts(matrix, k)) return false;
-      if (state.collapsed.has(SECTION_COLLAPSE_KEY(sectionOf(k)))) return false;
-      return true;
-    });
-    state.visibleKeys =
-      state.grouping === 'prefix' ? groupByPrefix(filtered) : filtered;
-    if (state.rowIdx >= state.visibleKeys.length) {
-      state.rowIdx = Math.max(0, state.visibleKeys.length - 1);
+    // Two parallel structures:
+    //   visibleKeys  — just the key names (used by editing helpers)
+    //   visibleItems — dividers + visible keys, in render order
+    // Dividers stay in the item list even when their section is collapsed,
+    // so the user can navigate onto one and expand it with 'c'.
+    const visibleKeys: string[] = [];
+    const items: MatrixItem[] = [];
+    const orderedAll = orderedKeys(matrix, state, sectionOf);
+    const seen = new Set<string>();
+    const focusedRef = state.visibleItems[state.rowIdx]?.ref;
+    for (const k of orderedAll) {
+      if (!matchesFilter(k, state.filter)) continue;
+      if (state.driftOnly && !keyDrifts(matrix, k)) continue;
+      const sec = sectionOf(k);
+      const secKey = SECTION_COLLAPSE_KEY(sec);
+      if (!seen.has(secKey)) {
+        seen.add(secKey);
+        items.push({ kind: 'divider', ref: secKey });
+      }
+      if (state.collapsed.has(secKey)) continue;
+      items.push({ kind: 'key', ref: k });
+      visibleKeys.push(k);
+    }
+    state.visibleKeys = visibleKeys;
+    state.visibleItems = items;
+    // Try to keep focus on the same item across rebuilds.
+    if (focusedRef) {
+      const i = items.findIndex((it) => it.ref === focusedRef);
+      if (i >= 0) state.rowIdx = i;
+    }
+    if (state.rowIdx >= items.length) {
+      state.rowIdx = Math.max(0, items.length - 1);
     }
   };
 
@@ -544,10 +585,19 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
       refresh();
     };
 
+    const focusedKey = (): string | null => {
+      const item = state.visibleItems[state.rowIdx];
+      return item && item.kind === 'key' ? item.ref : null;
+    };
+
     const startEdit = () => {
-      const key = state.visibleKeys[state.rowIdx];
+      const key = focusedKey();
       const file = matrix.files[state.colIdx];
-      if (!key || !file) return;
+      if (!key || !file) {
+        state.message = 'Move onto a variable row to edit.';
+        refresh();
+        return;
+      }
       // Edit works on missing cells too — on commit we either update the
       // existing entry or append a new one.
       const entry = findKvEntry(file, key);
@@ -565,9 +615,13 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
     };
 
     const startDelete = () => {
-      const key = state.visibleKeys[state.rowIdx];
+      const key = focusedKey();
       const file = matrix.files[state.colIdx];
-      if (!key || !file) return;
+      if (!key || !file) {
+        state.message = 'Move onto a variable row to delete.';
+        refresh();
+        return;
+      }
       const entry = findKvEntry(file, key);
       if (!entry) {
         state.message = `${key} is not present in ${basename(file.path)}.`;
@@ -902,7 +956,7 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           return refresh();
         case 'down':
           state.rowIdx = Math.min(
-            Math.max(0, state.visibleKeys.length - 1),
+            Math.max(0, state.visibleItems.length - 1),
             state.rowIdx + 1
           );
           return refresh();
@@ -947,10 +1001,15 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
             recomputeVisibleKeys();
             return refresh();
           }
-          // Collapse / expand the section containing the focused key.
-          const focusedKey = state.visibleKeys[state.rowIdx];
-          if (!focusedKey) return;
-          const sectionKey = sectionOf(focusedKey) ?? '__other__';
+          // Collapse / expand the section of the focused item. Works on
+          // both key rows and section dividers; on a divider this is the
+          // only way back into a collapsed section.
+          const item = state.visibleItems[state.rowIdx];
+          if (!item) return;
+          const sectionKey =
+            item.kind === 'divider'
+              ? item.ref
+              : (sectionOf(item.ref) ?? '__other__');
           if (state.collapsed.has(sectionKey)) {
             state.collapsed.delete(sectionKey);
             state.message = `Expanded "${sectionKey === '__other__' ? '(other)' : sectionKey}".`;
@@ -962,13 +1021,10 @@ export async function runMatrixTui(initialMatrix: Matrix): Promise<void> {
           return refresh();
         }
         case 'g': {
-          const prevKey = state.visibleKeys[state.rowIdx];
+          // Preserve focus across the rebuild — focusedRef in
+          // recomputeVisibleKeys finds the same item by ref.
           state.grouping = state.grouping === 'banner' ? 'prefix' : 'banner';
           recomputeVisibleKeys();
-          if (prevKey) {
-            const newIdx = state.visibleKeys.indexOf(prevKey);
-            if (newIdx >= 0) state.rowIdx = newIdx;
-          }
           state.message =
             state.grouping === 'banner'
               ? 'Group by comment banners.'
@@ -1075,41 +1131,37 @@ function refreshMatrix(
   // beyond the header.
   const totalWidth = KEY_COL_WIDTH + valueColWidth * matrix.files.length;
   const sectionStats = sectionMetadata(matrix, sectionOf, state);
-  const seenSection = new Set<string>();
 
-  let r = 0;
-  for (const key of orderedKeys(matrix, state, sectionOf)) {
-    const section = sectionOf(key);
-    const sectionKey = section ?? '__other__';
-    if (!seenSection.has(sectionKey)) {
-      seenSection.add(sectionKey);
+  for (let r = 0; r < state.visibleItems.length; r++) {
+    const item = state.visibleItems[r]!;
+    if (item.kind === 'divider') {
+      const sectionKey = item.ref;
+      const sectionName = sectionKey === '__other__' ? undefined : sectionKey;
       const meta = sectionStats.get(sectionKey) ?? {
         drift: 0,
         missing: 0,
         total: 0
       };
+      const focused = state.mode === 'browse' && r === state.rowIdx;
       scrollBox.content.add(
-        buildSectionDivider(
-          renderer,
-          `section-${sectionKey}`,
-          section,
-          totalWidth,
-          {
-            ...meta,
-            collapsed: state.collapsed.has(sectionKey)
-          }
-        )
+        buildSectionDivider(renderer, `row-${r}`, sectionName, totalWidth, {
+          ...meta,
+          collapsed: state.collapsed.has(sectionKey),
+          focused
+        })
       );
+      continue;
     }
-    if (state.collapsed.has(sectionKey)) continue;
+    const key = item.ref;
     const secret = isSecretKey(key) && !state.showSecrets;
-    // Key is "extra to base" when the base file does not have it; mark it
-    // once in the key column instead of per-cell.
-    const extraKey = matrix.cell(key, matrix.base).state === 'missing';
+    // Row-level state: highest-priority signal wins. Missing in any file
+    // beats differs beats extra (key absent from base). Drives a single
+    // coloured icon in the key column; value cells render in neutral grey.
+    const rowIndicator = rowLevelIndicator(matrix, key);
     const cells: { text: string; fg: RGBA; width: number; bg?: RGBA }[] = [
       {
-        text: extraKey ? `★ ${key}` : key,
-        fg: extraKey ? COLORS.extra : COLORS.fg,
+        text: rowIndicator ? `${rowIndicator.icon} ${key}` : `  ${key}`,
+        fg: rowIndicator ? rowIndicator.fg : COLORS.fg,
         width: KEY_COL_WIDTH
       }
     ];
@@ -1120,22 +1172,29 @@ function refreshMatrix(
         state.mode === 'browse' && r === state.rowIdx && c === state.colIdx;
       const placeholder =
         cell.value !== undefined && isPlaceholderValue(cell.value);
+      // Only placeholder values keep their warning colour; everything else
+      // stays neutral so the eye is drawn to the row indicator and the
+      // values themselves rather than a wall of colour.
       const text = placeholder
         ? `⚠ ${cell.value}`
         : renderCellText(cell.state, cell.value, secret);
+      const fg = placeholder
+        ? COLORS.placeholder
+        : cell.state === 'missing'
+          ? COLORS.fgDim
+          : COLORS.fg;
       cells.push({
         text,
-        fg: placeholder ? COLORS.placeholder : stateColor(cell.state),
+        fg,
         width: valueColWidth,
         bg: focused ? COLORS.focusBg : undefined
       });
     }
     scrollBox.content.add(buildRow(renderer, `row-${r}`, cells));
-    r++;
   }
 
   // Keep the focused row visible when navigating up/down past the viewport.
-  if (state.mode === 'browse' && state.visibleKeys.length > 0) {
+  if (state.mode === 'browse' && state.visibleItems.length > 0) {
     try {
       scrollBox.scrollChildIntoView(`row-${state.rowIdx}`);
     } catch {
@@ -1210,8 +1269,6 @@ function refreshPrompt(
       26,
       Math.max(...matrix.files.map((f) => basename(f.path).length + 2))
     );
-    // input(1) + table header+margin(2) + rows(n) + hint(1+margin 2) + chrome(4)
-    promptBox.height = Math.min(22, 10 + matrix.files.length);
 
     promptBody.add(
       new TextRenderable(renderer, {
@@ -1256,8 +1313,6 @@ function refreshPrompt(
       );
       promptBody.add(row);
     }
-  } else {
-    promptBox.height = 8;
   }
 }
 
@@ -1348,6 +1403,27 @@ function sectionMetadata(
     out.set(k, bucket);
   }
   return out;
+}
+
+function rowLevelIndicator(
+  matrix: Matrix,
+  key: string
+): { icon: string; fg: RGBA } | null {
+  // Inspect the key across every non-base file and pick the most "wrong"
+  // signal. Priority: missing (red) > differs (yellow) > extra (purple) > none.
+  let missing = false;
+  let differs = false;
+  const baseHasKey = matrix.cell(key, matrix.base).state !== 'missing';
+  for (const file of matrix.files) {
+    if (file === matrix.base) continue;
+    const s = matrix.cell(key, file).state;
+    if (s === 'missing') missing = true;
+    else if (s === 'differs') differs = true;
+  }
+  if (missing) return { icon: '✗', fg: COLORS.missing };
+  if (differs) return { icon: '≠', fg: COLORS.differs };
+  if (!baseHasKey) return { icon: '★', fg: COLORS.extra };
+  return null;
 }
 
 function keyDrifts(matrix: Matrix, key: string): boolean {
@@ -1455,7 +1531,7 @@ function buildSectionDivider(
   id: string,
   name: string | undefined,
   width: number,
-  meta: SectionStats & { collapsed: boolean }
+  meta: SectionStats & { collapsed: boolean; focused?: boolean }
 ): BoxRenderable {
   // Multi-segment divider so colours can encode meaning:
   //   gray ───   blue ▾ Name   dim · stats   gray ───
@@ -1495,7 +1571,8 @@ function buildSectionDivider(
     flexDirection: 'row',
     flexShrink: 0,
     height: 1,
-    paddingX: 1
+    paddingX: 1,
+    ...(meta.focused ? { backgroundColor: COLORS.focusBg } : {})
   });
   box.add(
     new TextRenderable(renderer, {
@@ -1605,35 +1682,15 @@ function renderCellText(
 ): string {
   if (cellState === 'missing') return '✗ missing';
   if (value === undefined) return '';
-  // Empty values stay visually empty so they aren't confused with a real
-  // value of "—". The key column on the left still anchors the row.
-  const formatted = formatValue(value, secret);
-  if (cellState === 'differs') return `≠ ${formatted}`;
-  // 'extra' state intentionally omits a per-cell ★ — the asymmetry is in
-  // the base column, not in the value. The key column gets a single ★
-  // prefix instead so the user sees one indicator per row, not N.
-  return formatted;
+  // Value cells render plain — the row-level icon in the key column carries
+  // the diff state colour, so individual cells don't need ≠ / ★ prefixes.
+  return formatValue(value, secret);
 }
 
 function formatValue(value: string | undefined, secret: boolean): string {
   if (value === undefined) return '';
   if (secret) return maskValue(value);
   return value;
-}
-
-function stateColor(cellState: CellState): RGBA {
-  switch (cellState) {
-    case 'differs':
-      return COLORS.differs;
-    case 'missing':
-      return COLORS.missing;
-    case 'extra':
-      return COLORS.extra;
-    case 'base':
-    case 'same':
-    default:
-      return COLORS.fg;
-  }
 }
 
 function matchesFilter(key: string, filter: string): boolean {
