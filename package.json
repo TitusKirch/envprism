@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.schemastore.org/package.json",
   "name": "envprism",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "TUI-based env file manager — refract one set of variables into many environment views.",
   "keywords": [
     "bun",
