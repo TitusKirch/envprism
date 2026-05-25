@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/TitusKirch/envprism/compare/v0.2.0...v0.3.0) (2026-05-25)
+
+
+### Features
+
+* **ci:** run release-please under the kirchDev Release App ([#12](https://github.com/TitusKirch/envprism/issues/12)) ([d1e0e85](https://github.com/TitusKirch/envprism/commit/d1e0e8505c9d7d02fd4d7b39a30c44a1d76cc6fa))
+
 ## [0.2.0](https://github.com/TitusKirch/envprism/compare/v0.1.0...v0.2.0) (2026-05-23)
 
 
