@@ -10,7 +10,7 @@
 [![Bun](https://img.shields.io/badge/bun-1.3%2B-8993be?style=flat-square)](https://bun.sh/)
 [![License: MIT](https://img.shields.io/npm/l/envprism.svg?style=flat-square&color=10b981)](LICENSE)
 
-![envprism TUI preview](.github/assets/envprism-tui.gif)
+![envprism TUI preview](.github/assets/demo.gif)
 
 </div>
 
@@ -21,6 +21,14 @@ bunx envprism
 ```
 
 That's it. Point `envprism` at a directory containing `.env*` files and it opens a side-by-side matrix view: rows are variable keys, columns are files. Differences light up, missing keys are obvious, and you can edit cells in place — comments, blank lines, and key order survive the round trip.
+
+## 🤔 Why
+
+Most projects accumulate a fistful of env files — `.env`, `.env.example`, `.env.staging`, `.env.production` — and no good way to see them together. You `diff` two at a time, miss the third, and ship a deploy where `REDIS_URL` was set everywhere except staging. The example file rots because nobody updates it when they add a key. Secrets get pasted into screenshots.
+
+envprism treats the whole set as one thing. Every file becomes a column, every variable a row, and the gaps jump out at a glance: this key is missing here, that value drifts there, this one is still a `CHANGEME` placeholder. Edit a cell and the write-back is byte-exact — comments, blank lines, key order, and quoting all survive. Secret values stay masked, so the view is safe to share.
+
+One set of variables, refracted into many environment views.
 
 > [!IMPORTANT]
 > `envprism` runs on **[Bun](https://bun.sh/)** 1.3+. The TUI is powered by [opentui](https://opentui.com/), which links to a native Zig core via `bun:ffi`. Node has no equivalent built-in FFI, so `npx envprism` will not work — install Bun first.
