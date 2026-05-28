@@ -10,7 +10,7 @@
 [![Bun](https://img.shields.io/badge/bun-1.3%2B-8993be?style=flat-square)](https://bun.sh/)
 [![License: MIT](https://img.shields.io/npm/l/envprism.svg?style=flat-square&color=10b981)](LICENSE)
 
-![envprism TUI preview](.github/assets/envprism-tui.gif)
+![envprism TUI preview](.github/assets/demo.gif)
 
 </div>
 
@@ -20,12 +20,47 @@
 bunx envprism
 ```
 
-That's it. Point `envprism` at a directory containing `.env*` files and it opens a side-by-side matrix view: rows are variable keys, columns are files. Differences light up, missing keys are obvious, and you can edit cells in place — comments, blank lines, and key order survive the round trip.
+That's it. Point `envprism` at a directory containing `.env*` files and it opens a side-by-side matrix: rows are variable keys, columns are files. Differences light up, missing keys are obvious, and you can edit cells in place — comments, blank lines, and key order survive the round trip.
+
+## 🤔 Why
+
+Most projects accumulate a fistful of env files — `.env`, `.env.example`, `.env.staging`, `.env.production` — and no good way to see them together. You `diff` two at a time, miss the third, and ship a deploy where `REDIS_URL` was set everywhere except staging. The example file rots because nobody updates it when they add a key. Secrets get pasted into screenshots.
+
+envprism treats the whole set as one thing: every file a column, every variable a row. The gaps jump out — this key is missing here, that value drifts there, this one is still a `CHANGEME`. Edits write back byte-exact, and secret values stay masked so the view is safe to share.
+
+## 📦 Install & run
 
 > [!IMPORTANT]
-> `envprism` runs on **[Bun](https://bun.sh/)** 1.3+. The TUI is powered by [opentui](https://opentui.com/), which links to a native Zig core via `bun:ffi`. Node has no equivalent built-in FFI, so `npx envprism` will not work — install Bun first.
+> envprism runs on **[Bun](https://bun.sh/)** 1.3+, not Node. The TUI links a native core via `bun:ffi`, so `npx envprism` will **not** work — [install Bun](https://bun.sh/) first.
+
+```bash
+bun add -g envprism     # install globally
+bunx envprism           # …or run without installing
+```
+
+```bash
+bunx envprism                      # open the TUI in the current directory
+bunx envprism tui path/to/repo     # scan another directory
+bunx envprism diff path/to/repo    # non-interactive drift report
+bunx envprism diff --json | jq     # structured drift report
+bunx envprism diff --check         # exit 1 if any file drifts from base (CI)
+```
+
+Inside the TUI, press `?` for the full keybinding reference.
 
 ## ✨ Features
+
+- **🧮 Matrix view** — every `.env*` file becomes a column, every variable a row, so n-way differences are visible at a glance.
+- **🎨 Diff at a glance** — per-cell icons flag values that differ, keys that are missing or extra, and unfilled placeholders like `CHANGEME`.
+- **🙈 Secret masking** — token / secret / password-like values render as `•••• (N)`, so the matrix is safe to screen-share.
+- **✏️ Edit in place** — edit any cell with `e`; editing a key a file doesn't have yet creates it. Also add (`a`), delete (`d`), and sync a value to every file (`=`).
+- **💾 Byte-exact write-back** — `Ctrl-S` rewrites only the keys you changed; comments, blank lines, key order, quoting, and `export` prefixes survive intact.
+- **📂 Sections & filtering** — group by comment banner or key prefix (`g`), fold sections (`c`), filter keys live (`/`), or show only drifting keys (`v`).
+- **↩️ Undo** — `Ctrl-Z` walks back the last edits, adds, and deletes.
+- **🧪 CI-friendly diff** — `envprism diff` prints a text or JSON (`--json`) drift report, or just sets an exit code (`--check`) for pre-commit hooks and CI.
+
+<details>
+<summary>Full feature list</summary>
 
 ### Discovery & comparison
 
@@ -43,7 +78,7 @@ That's it. Point `envprism` at a directory containing `.env*` files and it opens
 ### Editing & write-back
 
 - **✏️ Edit-or-add** — `e` / `Enter` opens an edit popover on any cell; if the key isn't in that file yet, save creates it. The popover renders every file's current value as context next to the input.
-- **➕ Add variable** — `a` walks key + value across two prompts; the parser's `[A-Za-z_][A-Za-z0-9_]*` rule guards the key name.
+- **➕ Add variable** — `a` walks key + value across two prompts; the key name is validated.
 - **➖ Delete variable** — `d` removes the focused key from the focused file.
 - **🆕 New `.env*` file** — `n` scaffolds a new file next to the base; saved with the rest on `Ctrl-S`.
 - **🔁 Sync-to-all** — `=` copies the focused cell's value into every file (create or update); `Ctrl-A` inside the edit popover applies what you're typing to every file at once.
@@ -63,48 +98,11 @@ That's it. Point `envprism` at a directory containing `.env*` files and it opens
 
 - **🧪 `envprism diff`** — non-interactive subcommand that prints a text drift table, JSON (`--json`), or just sets the exit code (`--check`). Drop it into a pre-commit hook or CI to fail builds that drift from `.env.example`.
 
-## 📦 Installation
-
-Install Bun (one-time): see [bun.sh](https://bun.sh/).
-
-```bash
-bun add -g envprism
-```
-
-Or run without installing:
-
-```bash
-bunx envprism
-```
-
-Requirements: **Bun 1.3+**.
-
-## 🚀 Quick start
-
-```bash
-bunx envprism                      # open the TUI in the current directory
-bunx envprism tui path/to/repo     # TUI scanning another directory
-bunx envprism diff path/to/repo    # non-interactive drift report
-bunx envprism diff --json | jq     # structured drift report
-bunx envprism diff --check; echo $?  # exits 1 if any file drifts from base
-```
-
-Inside the TUI, press `?` for the full keybinding reference.
+</details>
 
 ## ⚙️ Configuration
 
-envprism runs zero-config. To tune defaults, drop an `envprism.config.{ts,js,mjs,json}` in your project — manage it with the `config` commands:
-
-```bash
-bunx envprism config init     # scaffold envprism.config.ts (--force to overwrite)
-bunx envprism config path     # print the resolved config file (or note defaults)
-bunx envprism config show     # print the effective merged config as JSON
-bunx envprism config edit     # open it in $EDITOR (creates one in cwd if absent)
-```
-
-**Discovery & precedence.** The config file is resolved by walking **up from the current working directory** (not from the scanned `--paths` directory). Override the location with the `--config <path>` flag or the `ENVPRISM_CONFIG` env var. For any individual setting, a CLI flag beats the config file, which beats the built-in default (`flag > config > default`).
-
-For type-safe authoring:
+envprism runs zero-config. To tune defaults, drop an `envprism.config.{ts,js,mjs,json}` in your project — manage it with `bunx envprism config init | path | show | edit`. The file is resolved by walking **up from the current working directory** (override with `--config <path>` or `ENVPRISM_CONFIG`). For any setting, `flag > config > default`.
 
 ```ts
 // envprism.config.ts
@@ -117,6 +115,9 @@ export default defineEnvprismConfig({
 ```
 
 List fields come in two flavours: the base field (e.g. `secretTokens`) **replaces** the built-in list, while the `…Extra` variant (e.g. `secretTokensExtra`) **appends** to it.
+
+<details>
+<summary>All configuration options</summary>
 
 ### `discovery`
 
@@ -163,6 +164,8 @@ Base resolution order: `--base` flag → `base.name` → `base.priority` (in ord
 | `maskSecrets` | `true`  | Start with secret-suspect values masked (toggle in-app with `Ctrl-T`). |
 
 Theme keys (all optional hex strings): `fg`, `fgDim`, `fgHeader`, `fgBase`, `fgSection`, `differs`, `extra`, `placeholder`, `modified`, `fgDirty`, `missing`, `focusBg`. Invalid hex values are ignored with a warning and fall back to the default.
+
+</details>
 
 > [!NOTE]
 > The TypeScript types exported from `envprism/config` (`EnvprismUserConfig` and friends) are the canonical, always-current reference. A worked example lives in [`examples/envprism.config.ts`](examples/envprism.config.ts).
