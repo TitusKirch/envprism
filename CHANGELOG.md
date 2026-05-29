@@ -21,8 +21,6 @@
 
 ### Bug Fixes
 
-* **release:** switch to release-type node, sync package.json to 0.1.0 ([74bba93](https://github.com/TitusKirch/envprism/commit/74bba93b7fa851e4e4360d9fdd8e1ff45762ebc0))
-* **release:** switch to release-type node, sync package.json to 0.1.0 ([9fdff88](https://github.com/TitusKirch/envprism/commit/9fdff8841128c14697b50a3ac42edc36350679c5))
 * **release:** switch to release-type node, sync package.json to 0.1.0 ([#4](https://github.com/TitusKirch/envprism/issues/4)) ([fc7aa08](https://github.com/TitusKirch/envprism/commit/fc7aa080757b88f3e1f6f09c2e044c2b2e02e6ef))
 
 ## 0.1.0 (2026-05-23)
