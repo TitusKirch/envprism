@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
       - main
+      - dev
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
@@ -80,22 +81,12 @@ jobs:
       - name: Test with coverage
         run: pnpm test:coverage
 
-      - name: Fetch Codecov token from Bitwarden
-        uses: bitwarden/sm-action@27c0c9dcab679d7250dbab91227c85b49ffa5e0f # v3.0.0
-        with:
-          access_token: ${{ secrets.BWS_ACCESS_TOKEN }}
-          cloud_region: eu
-          secrets: |
-            2d1a6361-3c1c-45d3-b76a-b4540178ee1e > CODECOV_TOKEN
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
-        with:
-          files: coverage/lcov.info
-          fail_ci_if_error: false
-          flags: vitest
-          name: codecov-vitest
-          token: ${{ env.CODECOV_TOKEN }}
+      # Coverage gate is enforced locally by vitest `coverage.thresholds`
+      # (the run above fails if coverage drops below the floor). This step only
+      # posts/updates a sticky PR comment with the summary — no external service.
+      - name: Coverage summary (sticky PR comment)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
 
   build:
     name: Build
