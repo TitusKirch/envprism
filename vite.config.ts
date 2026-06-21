@@ -85,8 +85,17 @@ export default defineConfig({
         'src/commands/config/edit.ts',
         'src/commands/config/index.ts'
       ],
-      reporter: ['text', 'lcov', 'html'],
-      reportsDirectory: 'coverage'
+      // text+html for local use; json + json-summary feed the PR-comment action
+      // (davelosert/vitest-coverage-report-action). No lcov (was only for Codecov).
+      reporter: ['text', 'html', 'json', 'json-summary'],
+      reportsDirectory: 'coverage',
+      // Hard coverage floor — the run fails below this (replaces Codecov's gate).
+      // Branch left ungated (currently 89.75%, just under 90).
+      thresholds: {
+        statements: 90,
+        functions: 90,
+        lines: 90
+      }
     }
   }
 });
