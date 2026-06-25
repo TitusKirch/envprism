@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/TitusKirch/envprism/compare/v0.3.0...v0.3.1) (2026-06-25)
+
+
+### Bug Fixes
+
+* **dependabot:** match managed area:* label names ([5dd5040](https://github.com/TitusKirch/envprism/commit/5dd504052355189300431fec5c7bc8abc25ce55d))
+
 ## [0.3.0](https://github.com/TitusKirch/envprism/compare/v0.2.0...v0.3.0) (2026-05-25)
 
 
