@@ -27,3 +27,8 @@ nodeLinker: isolated
 
 allowBuilds:
   esbuild: true
+
+# Security override: force js-yaml past GHSA-h67p-54hq-rp68 (affects <=4.1.1).
+# Pulled in transitively via @commitlint/cli > cosmiconfig (dev-only tooling).
+overrides:
+  js-yaml@<4.2.0: '^4.2.0'
