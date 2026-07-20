@@ -1,6 +1,6 @@
 import type { BoxRenderable } from '@opentui/core';
 
 export function removeAllChildren(node: BoxRenderable): void {
-  const ids = node.getChildren().map((c) => c.id);
-  for (const id of ids) node.remove(id);
+  const children = [...node.getChildren()];
+  for (const child of children) node.remove(child);
 }

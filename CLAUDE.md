@@ -13,7 +13,7 @@ Distributed as a Bun CLI (`bunx envprism`, `bun add -g envprism`). Node is **not
 Mirrors `../forgemap` (the kirchDev CLI house style) but pivoted to Bun for opentui compatibility:
 
 - **Bun 1.3+** at runtime (`engines.bun`, version pinned in `.bun-version`). **Node is unsupported at runtime** because of opentui's FFI dependency.
-- **pnpm 11** for dev dependency management (`packageManager` + `.npmrc`). ESM only (`"type": "module"`).
+- **pnpm 11** for dev dependency management (`packageManager` + `pnpm-workspace.yaml`). ESM only (`"type": "module"`).
 - **TypeScript strict** (`noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `allowImportingTsExtensions` with `noEmit`).
 - **Vite (lib mode)** bundles to `dist/bin/envprism.mjs` (`#!/usr/bin/env bun` shebang via banner) and `dist/index.mjs`. Runtime deps are externalised in `vite.config.ts` — update `runtimeDeps` there when adding a new runtime dep, or the bundle will inline it.
 - **Vitest** for unit tests (config inlined in `vite.config.ts` via `vitest/config`'s `defineConfig`). Vitest still runs under Node for the core tests; TUI tests (when added) will need Bun.
