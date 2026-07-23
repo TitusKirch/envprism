@@ -18,6 +18,7 @@ Title should follow Conventional Commits (e.g. "feat: render env matrix in opent
 ## Checklist
 
 - [ ] `pnpm check` passes locally
+- [ ] Tests added or updated — or not applicable
 - [ ] Docs updated (README / CONTRIBUTING)
 - [ ] Commit messages follow Conventional Commits
 
