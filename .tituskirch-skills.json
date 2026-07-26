@@ -1,15 +1,45 @@
 {
   "$schema": "https://raw.githubusercontent.com/TitusKirch/skills/main/tituskirch-skills.schema.json",
+  "forge": "github",
   "language": "en",
+  "verify": "pnpm check && pnpm typecheck && pnpm test && pnpm build",
+  "trustedBots": [
+    {
+      "id": 287319172,
+      "login": "kirchdev-release[bot]"
+    },
+    {
+      "id": 49699333,
+      "login": "dependabot[bot]"
+    }
+  ],
+  "commit": {
+    "language": "en",
+    "scopes": "auto"
+  },
   "pr": {
-    "backend": "github",
     "base": "dev",
     "title": {
       "convention": "conventional"
     }
   },
+  "release": {
+    "promote": "auto",
+    "stages": ["dev", "main"],
+    "timeout": 600
+  },
+  "mergeDeps": {
+    "merge": false,
+    "confirm": "major",
+    "verify": "pnpm check && pnpm typecheck && pnpm test && pnpm build",
+    "cap": 5
+  },
+  "pruneBranches": {
+    "age": 90,
+    "protect": []
+  },
   "issue": {
-    "backend": "github",
+    "tracker": "github",
     "title": {
       "convention": "plain"
     },
@@ -22,5 +52,31 @@
   },
   "docs": {
     "preset": "cli"
+  },
+  "work": {
+    "tracker": "github",
+    "cap": 10,
+    "branch": "branch:dev",
+    "parallel": false,
+    "labels": {
+      "ready": "ai: ready",
+      "working": "ai: working",
+      "reviewRequested": "ai: review requested",
+      "reviewing": "ai: reviewing",
+      "changesRequested": "ai: changes requested",
+      "needsHuman": "ai: needs human",
+      "done": "ai: done",
+      "blocked": "ai: blocked",
+      "repo": false
+    },
+    "review": {
+      "maxRounds": 3
+    },
+    "priorityLabels": [
+      "priority: urgent",
+      "priority: high",
+      "priority: medium",
+      "priority: low"
+    ]
   }
 }
