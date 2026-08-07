@@ -70,7 +70,7 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@opentui/core": "^0.4.5",
+    "@opentui/core": "^0.5.1",
     "c12": "^3.3.4",
     "citty": "^0.2.2",
     "consola": "^3.4.2",
@@ -84,8 +84,8 @@
     "@vitest/coverage-v8": "^4.1.10",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.8",
-    "oxfmt": "0.59.0",
-    "oxlint": "1.74.0",
+    "oxfmt": "0.62.0",
+    "oxlint": "1.77.0",
     "taze": "^19.14.1",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
