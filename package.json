@@ -62,7 +62,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:coverage": "vitest run --passWithNoTests --coverage",
-    "check": "pnpm lint && pnpm format && pnpm typecheck",
+    "check": "pnpm lint && pnpm format && pnpm typecheck && pnpm test && pnpm build",
     "check:fix": "pnpm lint:fix && pnpm format:fix",
     "taze": "taze",
     "taze:w": "taze -w",
