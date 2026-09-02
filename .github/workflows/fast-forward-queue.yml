@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+# The triggers stay here because a reusable workflow cannot be dispatched — the
+# approval gate therefore remains in the repo it protects.
+name: Fast-forward Queue
+
+on:
+  push:
+    branches:
+      - 'ai/queue-**'
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Queue PR number to land; empty considers every open queue PR'
+        required: false
+        type: string
+
+jobs:
+  fast-forward-queue:
+    name: Fast-forward Queue
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      statuses: read
+    uses: kirchDev/workflows/.github/workflows/_fast-forward-queue.yml@f81bbe5fb5e8055b55a1ef5f861cc63a8e253622 # v0.1.3
+    with:
+      pr: ${{ inputs.pr }}
+    secrets:
+      BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
