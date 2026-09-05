@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.4.0](https://github.com/TitusKirch/envprism/compare/v0.3.1...v0.4.0) (2026-09-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* move to pnpm 12
+* this repository now requires pnpm 12.
+
+### Features
+
+* **ci:** call the central workflow bodies instead of copying them ([a12ffdf](https://github.com/TitusKirch/envprism/commit/a12ffdfa86f2f2adafc286fc968942becbdac79a))
+* route questions, ideas and possible bugs to the Discord forum ([8c8db6d](https://github.com/TitusKirch/envprism/commit/8c8db6df9531f7f751056f295997a7c573418264))
+
+
+### Bug Fixes
+
+* align issue-template labels with the label catalog ([0a29f1d](https://github.com/TitusKirch/envprism/commit/0a29f1ddab4ee3ac523084589f9ceed646950c78))
+* **ci:** let the queue PR body wrap itself ([dca389f](https://github.com/TitusKirch/envprism/commit/dca389ff897b87db79752afc02c866812eda3430))
+* **ci:** pin the workflow bodies to v0.2.0 and drop paths-ignore ([dc3f61a](https://github.com/TitusKirch/envprism/commit/dc3f61a487cde537d94f6ae82e090c1e4ed8300d))
+* **ci:** pin the workflow bodies to v0.5.0 ([23433a6](https://github.com/TitusKirch/envprism/commit/23433a6dd8b9b7d2304097646ce2f17160dd2e64))
+* **ci:** pin the workflow bodies to v0.7.0 ([55609ed](https://github.com/TitusKirch/envprism/commit/55609ed3dde543514cda68ae7c3c200a269c3a0d))
+* **ci:** read the Queue App PEM from this owner's own -ci mirror ([c44aadb](https://github.com/TitusKirch/envprism/commit/c44aadb3b2399e305e978a3643f01bf76a5f47dc))
+
+
+### Reverts
+
+* go back to pnpm 11.25.0 ([fa0ab4e](https://github.com/TitusKirch/envprism/commit/fa0ab4e6bdabd8a9fc1208a4155ba3ef7cdfd7b9))
+
+
+### Miscellaneous Chores
+
+* move to pnpm 12 ([1f76410](https://github.com/TitusKirch/envprism/commit/1f76410fedd81392196af921f9d2a54b65010241))
+* move to pnpm 12 ([a4c4219](https://github.com/TitusKirch/envprism/commit/a4c421971989dcedf9e0cafbf64234421671535f))
+
 ## [0.3.1](https://github.com/TitusKirch/envprism/compare/v0.3.0...v0.3.1) (2026-07-20)
 
 
