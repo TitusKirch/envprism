@@ -20,7 +20,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: kirchDev/workflows/.github/workflows/_release-please.yml@7fd4eaf529500fcd07c527ae70c839ab9ac7d76f # v0.7.0
+    uses: kirchDev/workflows/.github/workflows/_release-please.yml@94cbcbd676b989ac6c6327055a240132f5cd76a5 # v0.8.0
     secrets:
       BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
 
@@ -34,7 +34,7 @@ jobs:
       # NPM_TOKEN exists in this repo; npm verifies this workflow against the
       # trusted publisher configured on the package.
       id-token: write
-    uses: kirchDev/workflows/.github/workflows/_publish-npm.yml@7fd4eaf529500fcd07c527ae70c839ab9ac7d76f # v0.7.0
+    uses: kirchDev/workflows/.github/workflows/_publish-npm.yml@94cbcbd676b989ac6c6327055a240132f5cd76a5 # v0.8.0
     with:
       tag-name: ${{ needs.release-please.outputs.tag-name }}
 
@@ -53,6 +53,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: kirchDev/workflows/.github/workflows/_publish-npm.yml@7fd4eaf529500fcd07c527ae70c839ab9ac7d76f # v0.7.0
+    uses: kirchDev/workflows/.github/workflows/_publish-npm.yml@94cbcbd676b989ac6c6327055a240132f5cd76a5 # v0.8.0
     with:
       prerelease: true
