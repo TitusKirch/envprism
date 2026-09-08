@@ -48,7 +48,8 @@
     }
   },
   "docs": {
-    "preset": "cli"
+    "preset": "cli",
+    "render": "duxt"
   },
   "work": {
     "tracker": "github",
