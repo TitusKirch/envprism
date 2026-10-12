@@ -70,7 +70,7 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@opentui/core": "^0.4.5",
+    "@opentui/core": "^0.5.17",
     "c12": "^3.3.4",
     "citty": "^0.2.2",
     "consola": "^3.4.2",
@@ -81,15 +81,15 @@
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
     "@types/node": "^26.6.4",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.3",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
-    "oxfmt": "0.59.0",
+    "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
-    "taze": "^19.17.2",
+    "taze": "^21.3.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   },
   "engines": {
     "bun": ">=1.3"
