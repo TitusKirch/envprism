@@ -6,7 +6,7 @@
 
 [![npm Version](https://img.shields.io/npm/v/envprism.svg?style=flat-square&color=4f46e5)](https://www.npmjs.com/package/envprism)
 [![Downloads](https://img.shields.io/npm/dm/envprism.svg?style=flat-square&color=4f46e5)](https://www.npmjs.com/package/envprism)
-[![Tests](https://img.shields.io/github/actions/workflow/status/TitusKirch/envprism/ci.yml?branch=main&style=flat-square&label=tests)](https://github.com/TitusKirch/envprism/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/TitusKirch/envprism/ci.yml?event=pull_request&style=flat-square&label=tests)](https://github.com/TitusKirch/envprism/actions/workflows/ci.yml)
 [![Bun](https://img.shields.io/badge/bun-1.3%2B-8993be?style=flat-square)](https://bun.sh/)
 [![License: MIT](https://img.shields.io/npm/l/envprism.svg?style=flat-square&color=10b981)](LICENSE)
 
@@ -64,7 +64,7 @@ Inside the TUI, press `?` for the full keybinding reference.
 
 ### Discovery & comparison
 
-- **🔍 Auto-discovery** — finds every `.env*` file in the current directory (or in `--paths a b c`); skips editor swap files and backups.
+- **🔍 Auto-discovery** — finds every `.env*` file in the current directory, or in the directories and files you pass (`envprism tui a b c`); skips editor swap files and backups.
 - **🧮 Matrix view** — rows are the union of every variable, columns are the files; the prism metaphor, literal.
 - **🎯 Smart base resolution** — `.env.example` is auto-promoted to base if present, otherwise the alphabetically-first file. Override with `--base file`.
 - **🎨 Per-cell diff icons** — `≠` value differs (yellow), `✗ missing` (red), `★` extra (key not in base, yellow), `⚠` placeholder (orange) — only the icon is coloured, values stay neutral.
