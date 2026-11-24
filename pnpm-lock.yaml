@@ -179,8 +179,8 @@ importers:
   .:
     dependencies:
       '@opentui/core':
-        specifier: ^0.5.17
-        version: 0.5.17(typescript@7.0.2)(web-tree-sitter@0.25.10)
+        specifier: ^0.9.7
+        version: 0.9.7(typescript@7.0.2)(web-tree-sitter@0.25.10)
       c12:
         specifier: ^3.3.4
         version: 3.3.4(magicast@0.5.5)
@@ -380,51 +380,51 @@ packages:
       '@emnapi/core': ^1.7.1 || 2.0.0-beta.2
       '@emnapi/runtime': ^1.7.1 || 2.0.0-beta.2
 
-  '@opentui/core-darwin-arm64@0.5.17':
-    resolution: {integrity: sha512-ptobzW+1zM29nHvadwy+8uW9jvV8NJr63vcQXWe2rQNtpwN/6k7lEXWiS5LndeBs9AMV5tTsXMEMhttgts4BDQ==}
+  '@opentui/core-darwin-arm64@0.9.7':
+    resolution: {integrity: sha512-8BHj4oz0AiVKPT7pm+yfFtsVZHBE3EfT2/2NvAc1IGTY3BZoKQF1thYofy9oOrtHNAr9bZie2gtd0sweZO5xvg==}
     cpu: [arm64]
     os: [darwin]
 
-  '@opentui/core-darwin-x64@0.5.17':
-    resolution: {integrity: sha512-6yLbnElIZPxhZSrZSyS4mB5+k0YFlpRO0Q8uX4sLFTmvOy8tIeDPFcTGRQqZQ1Rk938tiAhf7iyAX3P1wL4Liw==}
+  '@opentui/core-darwin-x64@0.9.7':
+    resolution: {integrity: sha512-5js5J/0ryQwYcfnzZn7FLkRMP+u0sYk6zANMMnBHeGW0Y/VZRG052bL+HgGflTjVHZNaeMo093dzPjzLIsPZdw==}
     cpu: [x64]
     os: [darwin]
 
-  '@opentui/core-linux-arm64-musl@0.5.17':
-    resolution: {integrity: sha512-QMRdDbmR0LwpmX1HXVbN+V3A44/QsbWzMsF3V7cEz7MaDq6RNBs3CUFqfkPorKgPtI75T0AxM7FdJnjt9C4d0Q==}
+  '@opentui/core-linux-arm64-musl@0.9.7':
+    resolution: {integrity: sha512-FHQrQ2Pr7qr75PoQi/v2WborpHQMQ1yXsh9CwLdWrH29ZnXyvfcBT62KHLxgQ9gOwbyyfhGwulwUufLOnPOeig==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@opentui/core-linux-arm64@0.5.17':
-    resolution: {integrity: sha512-HO3dYgzQBGJhe58uJauVClIJg3vToYl/LZa7ZzqxQ+3vZ//cxaJ7tgXhHWR2uJE02550yI69e5nqBpSOTT9E8Q==}
+  '@opentui/core-linux-arm64@0.9.7':
+    resolution: {integrity: sha512-vuBVygG6hN7msz6EeskKQpz5qIl9AEI73G0BpD3klPyMmtHPS274H2Wsp5lW1EdPvBd1AttJEkLuaCoLAs6OsQ==}
     cpu: [arm64]
     os: [linux]
 
-  '@opentui/core-linux-x64-musl@0.5.17':
-    resolution: {integrity: sha512-M2RatQaeET/werHFSH+cg7OkQk/Wn0VoVXZLLEL7DiCDTuhZyMfi3uFDz0+R1IGiiUITqHWpZdZ1LdBY8NCjwQ==}
+  '@opentui/core-linux-x64-musl@0.9.7':
+    resolution: {integrity: sha512-liDYhAxV7Z3D8zoCwxzszmKsECDADWmd++7Y4FMSBIXTPFHp9uXUr7SROtItVDSfKUac05eT6fvGGVRamWcY6w==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@opentui/core-linux-x64@0.5.17':
-    resolution: {integrity: sha512-lNmtQlcwsio4IVo2trc0QoMyun31UsN0mzmSc2BtYMOeOC5e0PyWaEAZWJb/g6AinOs9xwJGL02JAN5J3QPWsw==}
+  '@opentui/core-linux-x64@0.9.7':
+    resolution: {integrity: sha512-aE6dODBqCGKZ63w0q59TQLT9F1CX42d/34O3OVZjOH9zuoGP/BEEhiUWgp59N4NDnRKMFooKMvZRyfFXZvomSA==}
     cpu: [x64]
     os: [linux]
 
-  '@opentui/core-win32-arm64@0.5.17':
-    resolution: {integrity: sha512-MyVVpZ0CyGDQ+g4eM0zURqEd/9jDrBIPcZdLyZOmWbdoVu36PLM9KAkqwl/n5ASn/rOrQd+d14jUAsZJvFTqzw==}
+  '@opentui/core-win32-arm64@0.9.7':
+    resolution: {integrity: sha512-7HbIsZ/o57k0LAzEQha53OBmFfH77U/tNTun6kKlWnD7Pe082YCL1lKkF+BqLMYN1bCFWfusm7blVDWLulSR8A==}
     cpu: [arm64]
     os: [win32]
 
-  '@opentui/core-win32-x64@0.5.17':
-    resolution: {integrity: sha512-etkuzyfclRX9wel4ivCOk90dUdZNtjK7U6vr7ZHmwkZyOik34ec3Gse0B/jyk192Xdx0l50Tl2xgC1h68XRiEQ==}
+  '@opentui/core-win32-x64@0.9.7':
+    resolution: {integrity: sha512-F73Q40dQQxsSMvHG1hCW5XDhXOCjlOAxNDhgS2/xx1pcSfVg9IiabmNShB6RJr6etkBGkm/B29LolMghv/DurA==}
     cpu: [x64]
     os: [win32]
 
-  '@opentui/core@0.5.17':
-    resolution: {integrity: sha512-75vMaKPKc6tnnUWEultPxiiSU0kqNSdAjbcsFGQecjCF4Z1Jrr4NZBiRo3SoMciai/nq24JCiYcVqPjaKtl/6Q==}
-    engines: {bun: '>=1.3.0', node: '>=26.4.0'}
+  '@opentui/core@0.9.7':
+    resolution: {integrity: sha512-gSAtchrYg0asP6v8EKDSZEn1lOBokbTsYLxiLtoVyyqGZtT3D3sLiW45hUxCwBviV2CaQm38o1CVC9nrGSjIVg==}
+    engines: {bun: '>=1.3.14', node: '>=26.4.0'}
     peerDependencies:
       web-tree-sitter: 0.25.10
 
@@ -1261,11 +1261,6 @@ packages:
   magicast@0.5.5:
     resolution: {integrity: sha512-UicdXN8zQ3JHlxVq+28afMXPr1z7WNY6+7EJnzTdQWkTAlMLF5fNCCKxJHBQwGaNGR11581EiQmQzx73+MvszA==}
 
-  marked@17.0.1:
-    resolution: {integrity: sha512-boeBdiS0ghpWcSwoNm/jJBwdpFaMnZWRzjA6SkUMYb40SVaN1x7mmfGKp0jvexGcx+7y2La5zRZsYFZI6Qpypg==}
-    engines: {node: '>= 20'}
-    hasBin: true
-
   mimic-function@5.0.1:
     resolution: {integrity: sha512-VP79XUPxV2CigYP3jWwAUFSku2aKqBH7uTAapFWCBqutsbmDo96KY5o8uh6U+/YSIn5OxJnXp73beVkpqMIGhA==}
     engines: {node: '>=18'}
@@ -1413,10 +1408,6 @@ packages:
   string-width@7.2.0:
     resolution: {integrity: sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ==}
     engines: {node: '>=18'}
-
-  strip-ansi@7.1.2:
-    resolution: {integrity: sha512-gmBGslpoQJtgnMAvOVqGZpEz9dyoKTCzy2nfz/n8aIFhN/jCE/rCmcxabB6jOOHV+0WNnylOxaxBQPSvcWklhA==}
-    engines: {node: '>=12'}
 
   strip-ansi@7.2.0:
     resolution: {integrity: sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w==}
@@ -1769,47 +1760,45 @@ snapshots:
       '@tybys/wasm-util': 0.10.5
     optional: true
 
-  '@opentui/core-darwin-arm64@0.5.17':
+  '@opentui/core-darwin-arm64@0.9.7':
     optional: true
 
-  '@opentui/core-darwin-x64@0.5.17':
+  '@opentui/core-darwin-x64@0.9.7':
     optional: true
 
-  '@opentui/core-linux-arm64-musl@0.5.17':
+  '@opentui/core-linux-arm64-musl@0.9.7':
     optional: true
 
-  '@opentui/core-linux-arm64@0.5.17':
+  '@opentui/core-linux-arm64@0.9.7':
     optional: true
 
-  '@opentui/core-linux-x64-musl@0.5.17':
+  '@opentui/core-linux-x64-musl@0.9.7':
     optional: true
 
-  '@opentui/core-linux-x64@0.5.17':
+  '@opentui/core-linux-x64@0.9.7':
     optional: true
 
-  '@opentui/core-win32-arm64@0.5.17':
+  '@opentui/core-win32-arm64@0.9.7':
     optional: true
 
-  '@opentui/core-win32-x64@0.5.17':
+  '@opentui/core-win32-x64@0.9.7':
     optional: true
 
-  '@opentui/core@0.5.17(typescript@7.0.2)(web-tree-sitter@0.25.10)':
+  '@opentui/core@0.9.7(typescript@7.0.2)(web-tree-sitter@0.25.10)':
     dependencies:
       bun-ffi-structs: 0.3.1(typescript@7.0.2)
       diff: 9.0.0
-      marked: 17.0.1
       string-width: 7.2.0
-      strip-ansi: 7.1.2
       web-tree-sitter: 0.25.10
     optionalDependencies:
-      '@opentui/core-darwin-arm64': 0.5.17
-      '@opentui/core-darwin-x64': 0.5.17
-      '@opentui/core-linux-arm64': 0.5.17
-      '@opentui/core-linux-arm64-musl': 0.5.17
-      '@opentui/core-linux-x64': 0.5.17
-      '@opentui/core-linux-x64-musl': 0.5.17
-      '@opentui/core-win32-arm64': 0.5.17
-      '@opentui/core-win32-x64': 0.5.17
+      '@opentui/core-darwin-arm64': 0.9.7
+      '@opentui/core-darwin-x64': 0.9.7
+      '@opentui/core-linux-arm64': 0.9.7
+      '@opentui/core-linux-arm64-musl': 0.9.7
+      '@opentui/core-linux-x64': 0.9.7
+      '@opentui/core-linux-x64-musl': 0.9.7
+      '@opentui/core-win32-arm64': 0.9.7
+      '@opentui/core-win32-x64': 0.9.7
     transitivePeerDependencies:
       - typescript
 
@@ -2339,8 +2328,6 @@ snapshots:
       '@babel/types': 7.29.8
       source-map-js: 1.2.2
 
-  marked@17.0.1: {}
-
   mimic-function@5.0.1: {}
 
   nanoid@3.3.20: {}
@@ -2503,10 +2490,6 @@ snapshots:
       emoji-regex: 10.6.0
       get-east-asian-width: 1.6.0
       strip-ansi: 7.2.0
-
-  strip-ansi@7.1.2:
-    dependencies:
-      ansi-regex: 6.2.2
 
   strip-ansi@7.2.0:
     dependencies:
