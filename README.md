@@ -172,12 +172,7 @@ Theme keys (all optional hex strings): `fg`, `fgDim`, `fgHeader`, `fgBase`, `fgS
 
 ## 🤝 Contributing
 
-PRs welcome. Conventional Commits required (enforced via commitlint). Husky runs the project's linters/formatters on `git commit`.
-
-> [!TIP]
-> Run `pnpm check:fix` before pushing — CI will catch what husky missed.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
+PRs welcome — setup, branching, commit conventions and the local gate are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🛣️ Versioning
 
