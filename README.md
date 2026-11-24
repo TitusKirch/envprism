@@ -64,7 +64,7 @@ Inside the TUI, press `?` for the full keybinding reference.
 
 ### Discovery & comparison
 
-- **🔍 Auto-discovery** — finds every `.env*` file in the current directory, or in the directories and files you pass (`envprism tui a b c`); skips editor swap files and backups.
+- **🔍 Auto-discovery** — finds every `.env*` file in the current directory, or in the one directory or file you pass (several via `discovery.paths`); skips editor swap files and backups.
 - **🧮 Matrix view** — rows are the union of every variable, columns are the files; the prism metaphor, literal.
 - **🎯 Smart base resolution** — `.env.example` is auto-promoted to base if present, otherwise the alphabetically-first file. Override with `--base file`.
 - **🎨 Per-cell diff icons** — `≠` value differs (yellow), `✗ missing` (red), `★` extra (key not in base, yellow), `⚠` placeholder (orange) — only the icon is coloured, values stay neutral.
