@@ -102,4 +102,13 @@ describe('diff command', () => {
     await run({ paths: [dir] });
     expect(out).toMatch(/Base:/);
   });
+
+  it('compares every positional path, not just the first', async () => {
+    await withDrift();
+    const example = join(dir, '.env.example');
+    const local = join(dir, '.env');
+    // citty puts the first positional in `paths` and all of them in `_`.
+    await run({ paths: example, _: [example, local], check: true });
+    expect(lastExit).toBe(1);
+  });
 });

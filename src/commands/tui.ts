@@ -5,9 +5,11 @@ import { loadEnvprismConfig } from '@/config/load.ts';
 import { resolveBase } from '@/core/base.ts';
 import { discoverEnvFiles } from '@/core/discover.ts';
 import { buildMatrix } from '@/core/matrix.ts';
+import { collectPaths } from '@/commands/paths.ts';
 
 interface TuiInvocation {
   paths?: string | string[];
+  _?: string[];
   base?: string;
   config?: string;
 }
@@ -18,7 +20,7 @@ interface TuiInvocation {
  */
 export async function runTui(args: TuiInvocation): Promise<void> {
   const { config } = await loadEnvprismConfig({ configFile: args.config });
-  const inputs = collectPaths(args.paths, config.discovery.paths);
+  const inputs = collectPaths(args, config.discovery.paths);
   const files = await discoverEnvFiles(
     inputs.map((p) => resolve(p)),
     {
@@ -58,7 +60,7 @@ export const tuiCommand = defineCommand({
     paths: {
       type: 'positional',
       required: false,
-      description: 'Directory or files to scan (defaults to cwd).'
+      description: 'Directories or files to scan (defaults to cwd).'
     },
     base: {
       type: 'string',
@@ -71,12 +73,11 @@ export const tuiCommand = defineCommand({
     }
   },
   async run({ args }) {
-    await runTui({ paths: args.paths, base: args.base, config: args.config });
+    await runTui({
+      paths: args.paths,
+      _: args._,
+      base: args.base,
+      config: args.config
+    });
   }
 });
-
-function collectPaths(arg: unknown, fallback: string[]): string[] {
-  if (Array.isArray(arg)) return arg.map(String);
-  if (typeof arg === 'string' && arg.length > 0) return [arg];
-  return fallback;
-}

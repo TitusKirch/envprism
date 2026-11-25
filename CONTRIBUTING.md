@@ -1,73 +1,43 @@
 # Contributing to envprism
 
-Thanks for taking the time to contribute! 🛠️ This document covers what you need to get a PR landed.
-
 ## Code of Conduct
 
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold it.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Reporting issues
 
-- **Bugs**: open a [Bug report](https://github.com/TitusKirch/envprism/issues/new?template=bug_report.yml) with a minimal reproduction if at all possible.
-- **Feature requests**: open a [Feature request](https://github.com/TitusKirch/envprism/issues/new?template=feature_request.yml).
-- **Questions & ideas, or something that might be a bug**: start in the [Discord forum](https://discord.kirch.dev/) — that's where the low-friction, unconfirmed stuff lives.
-- **Security vulnerabilities**: **do not** open a public issue. Follow [SECURITY.md](SECURITY.md).
+- **Bugs**: a [Bug report](https://github.com/TitusKirch/envprism/issues/new?template=bug_report.yml) with a minimal reproduction.
+- **Feature requests**: a [Feature request](https://github.com/TitusKirch/envprism/issues/new?template=feature_request.yml).
+- **Questions, ideas, possible bugs**: the [Discord forum](https://discord.kirch.dev/).
+- **Security vulnerabilities**: never a public issue — see [SECURITY.md](SECURITY.md).
 
 ## Development setup
 
-Requirements:
-
-- **[Bun](https://bun.sh/) 1.3+** — required at runtime (opentui's TUI uses Bun's FFI). Version is pinned in `.bun-version`.
-- **pnpm 11** for dependency management.
-- `git`.
-
-Node is not required for development or use; it can still execute the built `diff` subcommand because that path doesn't touch opentui, but the TUI and the published binary are Bun-only.
-
-Clone and install:
+Needs [Bun](https://bun.sh/) (version in `.bun-version`), pnpm (version in `package.json` → `packageManager`) and `git`.
 
 ```bash
 git clone https://github.com/TitusKirch/envprism.git
 cd envprism
-pnpm install   # wires husky hooks
+pnpm install   # also wires the husky hooks
 ```
 
-## Running the suite
-
-| Command          | What it does                                   |
-| :--------------- | :--------------------------------------------- |
-| `pnpm build`     | Build via vite to `dist/`.                     |
-| `pnpm lint`      | oxlint across the repo.                        |
-| `pnpm format`    | oxfmt check across JS / TS / JSON / YAML / MD. |
-| `pnpm typecheck` | `tsc --noEmit` (strict).                       |
-| `pnpm test`      | Run the vitest unit suite.                     |
-| `pnpm check`     | Runs `lint`, `format`, and `typecheck`.        |
-| `pnpm check:fix` | Auto-fix lint + format issues.                 |
-
-The same commands run in CI — keep them green before you push.
+`pnpm check` runs lint, format, typecheck, tests and build — the same gate CI runs. `pnpm check:fix` fixes lint and format. All scripts are in `package.json`.
 
 ## Branching & PRs
 
-1. **Don't push directly to `main`.** Branch off `main` for every change.
-2. **Conventional Commits required.** Commitlint enforces this on every commit. Examples:
-   - `feat: add new GitHub workflow`
-   - `fix(ci): correct pnpm cache key`
-   - `docs(readme): clarify template usage steps`
-   - `chore(deps): bump oxlint to 1.67`
-   - Breaking changes: `feat!: ...` or include `BREAKING CHANGE:` in the body.
-3. **One concern per PR.** Smaller PRs land faster.
-4. **Update relevant docs.** README, CONTRIBUTING, or comments if you change a default.
+1. Branch off `dev` and open the PR against `dev`. Never push to `main`.
+2. Conventional Commits, enforced by commitlint. Breaking changes: `feat!:` or a `BREAKING CHANGE:` footer.
+3. One concern per PR.
+4. Changing a default or a keybinding? Update the README too.
 
-## Style & quality gates
+## Hooks
 
-Husky runs the following on `git commit`:
+Husky runs oxlint and oxfmt on staged files at `pre-commit` and commitlint at `commit-msg`. If a hook fails, fix it and commit again — no `--no-verify`.
 
-- **JS / JSON / YAML / MD** → `oxlint` + `oxfmt`
+## AI agents
 
-If a hook fails, fix the issue and commit again. **Don't `--no-verify`** unless I explicitly ask.
-
-> [!TIP]
-> Run `pnpm check:fix` before opening a PR — saves a CI cycle.
+Agent rules live in [AGENTS.md](AGENTS.md). Claude Code reads it directly from v2.1.277 on, as long as no `CLAUDE.md` or `CLAUDE.local.md` sits in the working directory or above it.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+Contributions are licensed under the [MIT License](LICENSE).
