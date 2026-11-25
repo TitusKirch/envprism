@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.1](https://github.com/TitusKirch/envprism/compare/v0.4.0...v0.4.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **deps:** update @opentui/core to 0.9.7 ([32abbe4](https://github.com/TitusKirch/envprism/commit/32abbe4c20156e568a72546b53ff3a9ad7ce8154))
+* **deps:** update lint-staged to 17.6.2 ([2adada2](https://github.com/TitusKirch/envprism/commit/2adada2759ea4bf1d97658e43e9a0ee8323a73d5))
+* **deps:** update oxfmt to 0.79.0 ([6089d05](https://github.com/TitusKirch/envprism/commit/6089d05115e9ac53e9401bfa6fca77aa772e75d6))
+* **deps:** update the npm dependencies to their latest minor versions ([3799f7c](https://github.com/TitusKirch/envprism/commit/3799f7c5bdc73d19076eb57eca3d2317b3d17e79))
+* require bun 1.3.14, the floor opentui 0.9 sets ([32ff855](https://github.com/TitusKirch/envprism/commit/32ff855add1592b4c6c3bebb26f5ab1781f968e2))
+* scan every path passed on the command line ([545b0cd](https://github.com/TitusKirch/envprism/commit/545b0cddf94a50ce88af2275a0327add868be6d0))
+
 ## [0.4.0](https://github.com/TitusKirch/envprism/compare/v0.3.1...v0.4.0) (2026-10-12)
 
 
