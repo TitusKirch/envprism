@@ -52,10 +52,7 @@ export function buildLayout(
     title: '',
     flexDirection: 'column',
     flexGrow: 1,
-    paddingX: 1,
-    // Reserve a row at the bottom so the ScrollBox's horizontal scrollbar
-    // does not overlap the matrix box's bottom border.
-    paddingBottom: 1
+    paddingX: 1
   });
   body.add(matrixBox);
 
