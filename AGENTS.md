@@ -4,7 +4,7 @@ TUI env file manager: discovers `.env*` files and shows them as a keys × files 
 
 ## Runtime
 
-- Bun 1.3+ only (`engines.bun`, `.bun-version`): opentui's native core links via `bun:ffi`.
+- Bun only (floor in `engines.bun`, dev pin in `.bun-version`): opentui's native core links via `bun:ffi`. Keep `engines.bun` at or above `@opentui/core`'s own `engines.bun`.
 - opentui is reached only through the dynamic import in `src/commands/tui.ts`, so `diff` never loads it.
 - No `Bun.*` globals or `bun:ffi` imports in app code — only opentui's API and Node-compatible libs, so moving back to Node stays a toolchain change once opentui ships a Node backend.
 - Distribution is the npm package only: no `bun build --compile` binaries, no self-upgrade subcommand.

@@ -7,7 +7,7 @@
 [![npm Version](https://img.shields.io/npm/v/envprism.svg?style=flat-square&color=4f46e5)](https://www.npmjs.com/package/envprism)
 [![Downloads](https://img.shields.io/npm/dm/envprism.svg?style=flat-square&color=4f46e5)](https://www.npmjs.com/package/envprism)
 [![Tests](https://img.shields.io/github/actions/workflow/status/TitusKirch/envprism/ci.yml?event=pull_request&style=flat-square&label=tests)](https://github.com/TitusKirch/envprism/actions/workflows/ci.yml)
-[![Bun](https://img.shields.io/badge/bun-1.3%2B-8993be?style=flat-square)](https://bun.sh/)
+[![Bun](https://img.shields.io/badge/bun-1.3.14%2B-8993be?style=flat-square)](https://bun.sh/)
 [![License: MIT](https://img.shields.io/npm/l/envprism.svg?style=flat-square&color=10b981)](LICENSE)
 
 ![envprism TUI preview](.github/assets/demo.gif)
@@ -31,7 +31,7 @@ envprism treats the whole set as one thing: every file a column, every variable 
 ## 📦 Install & run
 
 > [!IMPORTANT]
-> envprism runs on **[Bun](https://bun.sh/)** 1.3+, not Node. The TUI links a native core via `bun:ffi`, so `npx envprism` will **not** work — [install Bun](https://bun.sh/) first.
+> envprism runs on **[Bun](https://bun.sh/)** 1.3.14+, not Node. The TUI links a native core via `bun:ffi`, so `npx envprism` will **not** work — [install Bun](https://bun.sh/) first.
 
 ```bash
 bun add -g envprism     # install globally
