@@ -13,7 +13,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ## Development setup
 
-Needs [Bun](https://bun.sh/) 1.3+ (pinned in `.bun-version`), pnpm (version in `package.json` → `packageManager`) and `git`.
+Needs [Bun](https://bun.sh/) (version in `.bun-version`), pnpm (version in `package.json` → `packageManager`) and `git`.
 
 ```bash
 git clone https://github.com/TitusKirch/envprism.git
