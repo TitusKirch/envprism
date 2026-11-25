@@ -22,6 +22,7 @@ TUI env file manager: discovers `.env*` files and shows them as a keys × files 
 - `src/config/` — schema and defaults (`schema.ts`), loading, merging. `schema.ts` and `define.ts` (the `envprism/config` export) must not import `@opentui/core`; `define.ts` also not c12 or defu.
 - `src/commands/` — citty subcommands. `src/tui/` — the opentui app: `app.ts` wires it, `render/` draws, `keys/` handles input.
 - `src/tui/help.ts` is the source of truth for keybindings; keep the README in sync with it.
+- `src/config/schema.ts` is the source of truth for config keys and defaults; keep the README's configuration tables in sync with it.
 
 ## Rules
 
