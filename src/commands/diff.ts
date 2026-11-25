@@ -6,6 +6,7 @@ import { resolveBase } from '@/core/base.ts';
 import { computeDiff, formatDiffText } from '@/core/diff.ts';
 import { discoverEnvFiles } from '@/core/discover.ts';
 import { buildMatrix } from '@/core/matrix.ts';
+import { collectPaths } from '@/commands/paths.ts';
 
 export const diffCommand = defineCommand({
   meta: {
@@ -16,7 +17,7 @@ export const diffCommand = defineCommand({
     paths: {
       type: 'positional',
       required: false,
-      description: 'Directory or files to scan (defaults to cwd).'
+      description: 'Directories or files to scan (defaults to cwd).'
     },
     base: {
       type: 'string',
@@ -39,7 +40,7 @@ export const diffCommand = defineCommand({
   },
   async run({ args }) {
     const { config } = await loadEnvprismConfig({ configFile: args.config });
-    const inputs = collectPaths(args.paths, config.discovery.paths);
+    const inputs = collectPaths(args, config.discovery.paths);
     const files = await discoverEnvFiles(
       inputs.map((p) => resolve(p)),
       {
@@ -78,9 +79,3 @@ export const diffCommand = defineCommand({
     process.stdout.write(formatDiffText(report));
   }
 });
-
-function collectPaths(arg: unknown, fallback: string[]): string[] {
-  if (Array.isArray(arg)) return arg.map(String);
-  if (typeof arg === 'string' && arg.length > 0) return [arg];
-  return fallback;
-}
